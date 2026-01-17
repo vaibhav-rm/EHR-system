@@ -1,80 +1,73 @@
-'use client';
+import { auth } from "@/auth";
+import { getDoctorPrescriptions } from "@/app/actions/clinical";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { PrescriptionForm } from "@/components/fhir-ui/PrescriptionForm";
+import { Pill, User } from "lucide-react";
 
-import { PrescriptionForm } from '@/components/fhir-ui/PrescriptionForm';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Search } from 'lucide-react';
-import { PrescriptionList } from '@/components/fhir-ui/PrescriptionList';
-
-export default function DoctorMedicationsPage() {
-  const [patientId, setPatientId] = useState('');
-  const [confirmedPatientId, setConfirmedPatientId] = useState('');
-  const doctorId = 'doc1'; // Mock doctor ID
+export default async function DoctorMedicationsPage() {
+  const session = await auth();
+  const doctorId = session?.user?.id;
+  const prescriptions = await getDoctorPrescriptions(doctorId || '');
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">e-Prescriptions</h1>
-        <p className="text-muted-foreground">
-          Issue new prescriptions and view active medications.
-        </p>
+    <div className="grid gap-6 lg:grid-cols-2">
+      {/* WRITE PRESCRIPTION COLUMN */}
+      <div className="space-y-6">
+        <div>
+            <h1 className="text-3xl font-bold tracking-tight">Prescriptions</h1>
+            <p className="text-muted-foreground">Issue e-prescriptions to your patients.</p>
+        </div>
+        
+        <Card>
+            <CardHeader>
+                <CardTitle>New Prescription</CardTitle>
+                <CardDescription>Select a patient and prescribe medication.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <PrescriptionForm doctorId={doctorId || ''} />
+            </CardContent>
+        </Card>
       </div>
 
-        {!confirmedPatientId ? (
-             <Card className="max-w-md">
-                <CardHeader>
-                    <CardTitle>Select Patient</CardTitle>
-                    <CardDescription>Enter Patient ID to prescribe medication.</CardDescription>
-                </CardHeader>
-                <CardContent className="flex gap-2">
-                    <div className="grid gap-2 flex-1">
-                        <Label htmlFor="pid">Patient ID</Label>
-                        <Input 
-                            id="pid" 
-                            placeholder="e.g. pat1" 
-                            value={patientId}
-                            onChange={(e) => setPatientId(e.target.value)}
-                        />
-                    </div>
-                    <div className="flex items-end">
-                        <Button onClick={() => setConfirmedPatientId(patientId)} disabled={!patientId}>
-                            <Search className="h-4 w-4 mr-2" />
-                            Find
-                        </Button>
-                    </div>
-                </CardContent>
-            </Card>
-        ) : (
-            <div className="grid gap-6 md:grid-cols-2">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>New Prescription</CardTitle>
-                        <CardDescription>
-                            Issuing for Patient: {confirmedPatientId}
-                            <Button variant="link" className="p-0 h-auto ml-2" onClick={() => setConfirmedPatientId('')}>Change</Button>
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <PrescriptionForm patientId={confirmedPatientId} doctorId={doctorId} />
-                    </CardContent>
-                </Card>
+      {/* HISTORY COLUMN */}
+      <div className="space-y-6">
+        <div>
+            <h2 className="text-xl font-semibold">Recent Prescriptions</h2>
+            <p className="text-sm text-muted-foreground">History of meds you have prescribed.</p>
+        </div>
 
-                 <Card>
-                    <CardHeader>
-                        <CardTitle>Active Medications</CardTitle>
-                        <CardDescription>
-                            Current list for this patient.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <PrescriptionList patientId={confirmedPatientId} />
-                    </CardContent>
-                </Card>
-            </div>
-        )}
+        <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+            {prescriptions.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
+                    No history found.
+                </div>
+            ) : (
+                prescriptions.map((script: any) => (
+                    <Card key={script.id}>
+                        <CardHeader className="p-4 pb-2">
+                            <div className="flex justify-between items-start">
+                                <CardTitle className="text-base font-medium flex items-center gap-2">
+                                    <Pill className="h-4 w-4 text-blue-500" />
+                                    {script.medicationCodeableConcept?.text}
+                                </CardTitle>
+                                <Badge variant="outline" className="text-[10px] uppercase">
+                                    {script.status}
+                                </Badge>
+                            </div>
+                            <CardDescription className="text-xs flex items-center gap-1">
+                                <User className="h-3 w-3" /> {script.patientName}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-4 pt-2 text-sm text-gray-600 dark:text-gray-300">
+                            <p><strong>Dosage:</strong> {script.dosageInstruction?.[0]?.doseAndRate?.[0]?.type?.text || 'Standard'}</p>
+                            <p className="mt-1"><strong>Instructions:</strong> {script.dosageInstruction?.[0]?.text}</p>
+                        </CardContent>
+                    </Card>
+                ))
+            )}
+        </div>
+      </div>
     </div>
   );
 }

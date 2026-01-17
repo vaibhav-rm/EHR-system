@@ -119,6 +119,31 @@ export const fhirStore = {
         );
     },
 
+    // --- MEDICATIONS ---
+    async createMedicationRequest(medication: any) {
+        const db = await readDb();
+        if (!db['MedicationRequest']) db['MedicationRequest'] = {};
+
+        if (!medication.id) medication.id = crypto.randomUUID();
+        if (!medication.status) medication.status = 'active';
+
+        db['MedicationRequest'][medication.id] = medication;
+        await writeDb(db);
+        return medication;
+    },
+
+    async findMedicationsByPatient(patientId: string) {
+        const db = await readDb();
+        const meds = Object.values(db['MedicationRequest'] || {});
+        return meds.filter((m: any) => m.subject?.reference === `Patient/${patientId}`);
+    },
+
+    async findMedicationsByPractitioner(practitionerId: string) {
+        const db = await readDb();
+        const meds = Object.values(db['MedicationRequest'] || {});
+        return meds.filter((m: any) => m.requester?.reference === `Practitioner/${practitionerId}`);
+    },
+
     // --- GENERIC GET ---
     async getResource(type: string, id: string) {
         const db = await readDb();

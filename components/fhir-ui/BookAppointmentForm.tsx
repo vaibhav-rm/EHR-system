@@ -32,11 +32,13 @@ export function BookAppointmentForm({ patientId }: { patientId: string }) {
     
     async function clientAction(formData: FormData) {
         const result = await bookAppointment(null, formData);
-        if (result?.error || result?.errors) {
+        if (result?.errors) {
             toast.error(result.message || "Failed to book");
         } else if (result?.success) {
             toast.success(result.message);
             // Close dialog? We might need a prop to close it.
+        } else if (result?.message && !result.success) {
+             toast.error(result.message);
         }
     }
 

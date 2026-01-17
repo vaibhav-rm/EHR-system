@@ -1,125 +1,87 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { MedicationRequestSchema, MedicationRequestFormData } from '@/lib/schemas';
+import { useFormStatus } from 'react-dom';
+import { createPrescription } from '@/app/actions/clinical';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 
-interface PrescriptionFormProps {
-  patientId: string;
-  doctorId: string; // The ID of the prescribing doctor
-  onSuccess?: () => void;
+// Mock Patient List (In real app, doctor searches for patient)
+const PATIENTS = [
+    { id: 'patient-123', name: 'John Doe' },
+    { id: 'patient-456', name: 'Jane Smith' },
+    { id: 'patient-789', name: 'Robert Brown' },
+];
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" className="w-full" disabled={pending}>
+      {pending ? 'Sending...' : 'Send Prescription'}
+    </Button>
+  );
 }
 
-export function PrescriptionForm({ patientId, doctorId, onSuccess }: PrescriptionFormProps) {
-  const queryClient = useQueryClient();
+export function PrescriptionForm({ doctorId }: { doctorId: string }) {
+    
+    async function clientAction(formData: FormData) {
+        const result = await createPrescription(null, formData);
+        if (result?.errors) {
+            toast.error("Please fix the errors");
+        } else if (result?.success) {
+            toast.success(result.message);
+            // reset form logic here if needed (e.g. by key change or ref)
+        } else if (result?.message) {
+             toast.error(result.message);
+        }
+    }
 
-  const form = useForm<MedicationRequestFormData>({
-    resolver: zodResolver(MedicationRequestSchema),
-    defaultValues: {
-      resourceType: 'MedicationRequest',
-      status: 'active',
-      intent: 'order',
-      medicationCodeableConcept: {
-          coding: [{ system: 'http://www.nlm.nih.gov/research/umls/rxnorm', code: '', display: '' }],
-          text: ''
-      },
-      subject: { reference: `Patient/${patientId}` },
-      requester: { reference: `Practitioner/${doctorId}` },
-      dosageInstruction: [
-          {
-              text: '',
-              timing: { repeat: { frequency: 1, period: 1, periodUnit: 'd' } }
-          }
-      ],
-      authoredOn: new Date().toISOString()
-    },
-  });
+    return (
+        <form action={clientAction} className="space-y-4">
+            <input type="hidden" name="doctorId" value={doctorId} />
+            
+            <div className="space-y-2">
+                <Label>Select Patient</Label>
+                <Select name="patientId" required>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Search patient..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {PATIENTS.map(p => (
+                            <SelectItem key={p.id} value={p.id}>
+                                {p.name} (ID: {p.id.slice(0,4)})
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
 
-  const mutation = useMutation({
-    mutationFn: async (data: MedicationRequestFormData) => {
-      const res = await fetch('/api/fhir/MedicationRequest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+            <div className="space-y-2">
+                <Label>Medication Name</Label>
+                <Input name="medicationName" placeholder="e.g. Amoxicillin" required />
+            </div>
 
-      if (!res.ok) throw new Error('Failed to create prescription');
-      return res.json();
-    },
-    onSuccess: () => {
-      toast.success('Prescription sent successfully');
-      queryClient.invalidateQueries({ queryKey: ['medications'] });
-      form.reset();
-      if (onSuccess) onSuccess();
-    },
-    onError: (error) => {
-      toast.error(`Error: ${error.message}`);
-    },
-  });
+            <div className="flex gap-4">
+                <div className="space-y-2 flex-1">
+                    <Label>Dosage</Label>
+                    <Input name="dosage" placeholder="500mg" required />
+                </div>
+                {/* Could add Frequency here */}
+            </div>
 
-  function onSubmit(data: MedicationRequestFormData) {
-      // Ensure coding display matches text if simplified
-      if (data.medicationCodeableConcept.coding?.[0]) {
-          data.medicationCodeableConcept.text = data.medicationCodeableConcept.coding[0].display;
-      }
-      
-      const payload = {
-          ...data,
-          authoredOn: new Date().toISOString()
-      };
-      mutation.mutate(payload);
-  }
+            <div className="space-y-2">
+                <Label>Instructions</Label>
+                <Textarea 
+                    name="instructions" 
+                    placeholder="Take one tablet three times a day after food..." 
+                    required 
+                />
+            </div>
 
-  return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        
-        <FormField
-            control={form.control}
-            name="medicationCodeableConcept.coding.0.display"
-            render={({ field }) => (
-                <FormItem>
-                <FormLabel>Medication Name</FormLabel>
-                <FormControl>
-                    <Input placeholder="e.g. Amoxicillin 500mg" {...field} />
-                </FormControl>
-                <FormMessage />
-                </FormItem>
-            )}
-        />
-
-        <div className="grid grid-cols-2 gap-4">
-             <FormField
-                control={form.control}
-                name="dosageInstruction.0.text"
-                render={({ field }) => (
-                    <FormItem className="col-span-2">
-                    <FormLabel>Dosage Instructions</FormLabel>
-                    <FormControl>
-                        <Input placeholder="e.g. Take 1 tablet every 8 hours" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                    </FormItem>
-                )}
-            />
-        </div>
-
-        <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Sending...' : 'Issue Prescription'}
-        </Button>
-      </form>
-    </Form>
-  );
+            <SubmitButton />
+        </form>
+    );
 }
