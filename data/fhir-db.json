@@ -1,0 +1,171 @@
+{
+  "Observation": {
+    "b35baea0-88c0-4364-982c-cbe02e5f2eec": {
+      "resourceType": "Observation",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "9279-1",
+            "display": "Respiratory Rate"
+          }
+        ],
+        "text": "Respiratory Rate"
+      },
+      "subject": {
+        "reference": "Patient/pa1"
+      },
+      "valueQuantity": {
+        "value": 0,
+        "unit": "breaths/min",
+        "system": "http://unitsofmeasure.org",
+        "code": "breaths/min"
+      },
+      "effectiveDateTime": "2025-12-29T19:09:55.186Z",
+      "id": "b35baea0-88c0-4364-982c-cbe02e5f2eec"
+    },
+    "7aee5a01-ec84-4db4-a0c9-aba06ba48991": {
+      "resourceType": "Observation",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "8310-5",
+            "display": "Body Temperature"
+          }
+        ],
+        "text": "Body Temperature"
+      },
+      "subject": {
+        "reference": "Patient/Mike"
+      },
+      "valueQuantity": {
+        "value": 2,
+        "unit": "degF",
+        "system": "http://unitsofmeasure.org",
+        "code": "degF"
+      },
+      "effectiveDateTime": "2026-01-17T13:41:50.148Z",
+      "id": "7aee5a01-ec84-4db4-a0c9-aba06ba48991"
+    }
+  },
+  "Patient": {
+    "f04700f8-9db7-46eb-aff6-5af45d5a0f31": {
+      "resourceType": "Patient",
+      "name": [
+        {
+          "use": "official",
+          "family": "Jaushwa",
+          "given": []
+        }
+      ],
+      "telecom": [
+        {
+          "system": "email",
+          "value": "jaushwa@gmail.com"
+        },
+        {
+          "system": "phone",
+          "value": ""
+        }
+      ],
+      "id": "f04700f8-9db7-46eb-aff6-5af45d5a0f31"
+    },
+    "085ae139-d63d-4ee3-9304-a68647a209ce": {
+      "resourceType": "Patient",
+      "name": [
+        {
+          "use": "official",
+          "family": "Mike",
+          "given": []
+        }
+      ],
+      "telecom": [
+        {
+          "system": "email",
+          "value": "mike@gmail.com"
+        },
+        {
+          "system": "phone",
+          "value": "+91 123456789"
+        }
+      ],
+      "id": "085ae139-d63d-4ee3-9304-a68647a209ce"
+    },
+    "faa60479-5636-488e-a142-37cab1323b67": {
+      "resourceType": "Patient",
+      "name": [
+        {
+          "use": "official",
+          "family": "Mike",
+          "given": []
+        }
+      ],
+      "telecom": [
+        {
+          "system": "email",
+          "value": "mike@gmail.con"
+        },
+        {
+          "system": "phone",
+          "value": "+91 123456789"
+        }
+      ],
+      "id": "faa60479-5636-488e-a142-37cab1323b67"
+    }
+  },
+  "User": {
+    "6dfc038d-dd1c-46ca-8316-0b397d8ec911": {
+      "name": "Jaushwa",
+      "email": "jaushwa@gmail.com",
+      "password": "pG,u3#4hYarzPV%",
+      "role": "patient",
+      "fhirId": "f04700f8-9db7-46eb-aff6-5af45d5a0f31",
+      "id": "6dfc038d-dd1c-46ca-8316-0b397d8ec911"
+    },
+    "29bf5292-9c97-4df5-8035-10eda14c3a0d": {
+      "name": "Mike",
+      "email": "mike@gmail.com",
+      "password": "51370720",
+      "role": "patient",
+      "fhirId": "085ae139-d63d-4ee3-9304-a68647a209ce",
+      "id": "29bf5292-9c97-4df5-8035-10eda14c3a0d"
+    },
+    "afa4399a-8e64-4a7a-9438-8eb8e7afcc60": {
+      "name": "Mike",
+      "email": "mike@gmail.con",
+      "password": "51370720",
+      "role": "patient",
+      "fhirId": "faa60479-5636-488e-a142-37cab1323b67",
+      "id": "afa4399a-8e64-4a7a-9438-8eb8e7afcc60"
+    }
+  },
+  "Appointment": {
+    "84e40d43-7b5d-4124-9dea-25c94e8d3e0f": {
+      "resourceType": "Appointment",
+      "status": "booked",
+      "description": "Routine Checkup",
+      "start": "2025-04-12T16:52:00.000Z",
+      "end": "2025-04-11T23:32:00.000Z",
+      "participant": [
+        {
+          "actor": {
+            "reference": "Patient/pat1",
+            "display": "Patient"
+          },
+          "status": "accepted"
+        },
+        {
+          "actor": {
+            "reference": "Practitioner/doc1",
+            "display": "Doctor"
+          },
+          "status": "needs-action"
+        }
+      ],
+      "id": "84e40d43-7b5d-4124-9dea-25c94e8d3e0f"
+    }
+  }
+}
