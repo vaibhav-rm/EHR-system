@@ -1,8 +1,8 @@
 'use server';
 
 import { generateSpeech } from '@/lib/tts';
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { fhirStore } from '@/lib/fhir-store';
+// import { GoogleGenerativeAI } from "@google/generative-ai"; 
+// In a real scenario, we would import Gemini SDK here
 
 type VoiceResponse = {
     text: string;
@@ -11,124 +11,51 @@ type VoiceResponse = {
         type: 'NAVIGATE' | 'CREATE_CONDITION';
         payload: any;
     };
-    debugError?: string;
 }
 
 export async function processVoiceCommand(transcript: string): Promise<VoiceResponse> {
     console.log("Processing voice command:", transcript);
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    console.log("Debug: API Key present?", !!apiKey);
+    const lower = transcript.toLowerCase();
+    let text = "I'm not sure how to help with that.";
+    let action: VoiceResponse['action'] = undefined;
 
-    if (!apiKey) {
-        console.error("GEMINI_API_KEY is missing");
-        return {
-            text: "I'm sorry, my brain is not connected. Please check configuration.",
-            audio: null,
-            debugError: "GEMINI_API_KEY environment variable is missing."
-        };
+    // --- MOCK AI LOGIC (Replace with Gemini for real NLU) ---
+    // Gemini Prompt would be: "Classify this text into an intent (NAVIGATE, QUERY, CREATE) and extract entities..."
+
+    if (lower.includes('store') || lower.includes('pharmacy') || lower.includes('buy')) {
+        text = "Opening the pharmacy store for you.";
+        action = { type: 'NAVIGATE', payload: '/dashboard/patient/store' };
+    }
+    else if (lower.includes('history') || lower.includes('recent') || lower.includes('condition')) {
+        text = "Showing your medical history.";
+        action = { type: 'NAVIGATE', payload: '/dashboard/patient' }; // Tabs default to history?
+    }
+    else if (lower.includes('report') || lower.includes('lab')) {
+        text = "Here are your latest lab reports.";
+        action = { type: 'NAVIGATE', payload: '/dashboard/patient/labs' };
+    }
+    else if (lower.includes('settings') || lower.includes('profile')) {
+        text = "Opening your settings.";
+        action = { type: 'NAVIGATE', payload: '/dashboard/patient/settings' };
+    }
+    else if (lower.includes('headache') || lower.includes('fever') || lower.includes('pain')) {
+        // Basic symptom check intent
+        text = "I can add that to your history. Please use the 'Add Record' button on your dashboard to save specific details.";
+        // For a fully automated create, we'd extract the entity here.
+    }
+    else if (lower.includes('hello') || lower.includes('hi')) {
+        text = "Hello! I am Dr. Aira. How can I help you today?";
     }
 
-    try {
-        const genAI = new GoogleGenerativeAI(apiKey);
+    // --- END MOCK AI ---
 
-        // Fetch Contextual Data (Mocking a logged in patient for now or admin view)
-        // In a real app, we would get the session user ID. 
-        // For prototype, we'll fetch some aggregate stats to make Dr. Aira smart.
-        const allAppointments = await fhirStore.search('Appointment', () => true);
-        const allMeds = await fhirStore.search('MedicationRequest', () => true);
+    // Generate Audio
+    const audio = await generateSpeech(text);
 
-        const contextData = {
-            totalAppointments: allAppointments.length,
-            activeMedications: allMeds.filter((m: any) => m.status === 'active').length,
-            recentVitals: {
-                heartRate: "72 bpm",
-                bp: "120/80",
-                lastCheckup: "2 days ago"
-            }
-        };
-
-        // Using 'gemini-flash-latest' which is confirmed working with your key/quota
-        const model = genAI.getGenerativeModel({
-            model: "gemini-flash-latest",
-            generationConfig: {
-                responseMimeType: "application/json"
-            },
-            safetySettings: [
-                {
-                    category: "HARM_CATEGORY_DANGEROUS_CONTENT" as any,
-                    threshold: "BLOCK_MEDIUM_AND_ABOVE" as any
-                }
-            ]
-        });
-
-        const prompt = `
-            Act as Dr. Aira, a empathetic, highly intelligent, and data-driven medical AI assistant.
-            You are speaking to a user of the EHR system.
-
-            CURRENT SYSTEM DATA:
-            ${JSON.stringify(contextData, null, 2)}
-
-            USER SAID: "${transcript}"
-
-            YOUR INSTRUCTIONS:
-            1. Analyze the user's intent.
-            2. If they ask about their health or the system, cite specific numbers from the DATA provided above to give "good insights".
-            3. Be friendly, human-like, and professional. Avoid robotic phrases.
-            4. Return a JSON object with your response and optional action.
-
-            Possible Actions:
-            - NAVIGATE: Payloads:
-                - '/dashboard/patient' (Home)
-                - '/dashboard/patient/store' (Pharmacy)
-                - '/dashboard/patient/labs' (Labs)
-                - '/dashboard/patient/settings' (Settings)
-                - '/dashboard/doctor' (Doctor View)
-            - NONE
-
-            Output Format (JSON ONLY):
-            {
-                "text": "Natural spoken response (max 2 sentences). Use the numbers!",
-                "action": { "type": "NAVIGATE", "payload": "/path" } // OR null
-            }
-        `;
-
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
-        console.log("Gemini JSON Response:", responseText);
-
-        const parsed = JSON.parse(responseText);
-
-        if (!parsed.text) throw new Error("Invalid Gemini response shape");
-
-        // Generate Audio
-        let audio = null;
-        try {
-            audio = await generateSpeech(parsed.text);
-        } catch (ttsError) {
-            console.error("TTS Error:", ttsError);
-        }
-
-        return {
-            text: parsed.text,
-            audio,
-            action: parsed.action || undefined
-        };
-
-    } catch (error: any) {
-        console.error("CRITICAL VOICE AGENT ERROR:", error);
-
-        let friendlyMessage = "I'm having trouble connecting to my AI services right now.";
-        let debugError = error instanceof Error ? error.message : String(error);
-
-        if (debugError.includes('429') || debugError.includes('Quota exceeded')) {
-            friendlyMessage = "I am currently at capacity. Please wait about 30 seconds and try again.";
-        }
-
-        return {
-            text: friendlyMessage,
-            audio: null,
-            debugError: debugError
-        };
-    }
+    return {
+        text,
+        audio,
+        action
+    };
 }

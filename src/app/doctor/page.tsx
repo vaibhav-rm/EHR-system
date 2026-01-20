@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import DoctorSidebar from "@/components/DoctorSidebar";
 import { Doctor, Appointment, Patient } from "@/lib/types";
-import { supabase } from "@/lib/supabase";
 import { Calendar, Users, FileText, Clock, TrendingUp, Activity } from "lucide-react";
+import { getDoctorDashboardData } from "@/app/actions/clinical";
 
 export default function DoctorDashboard() {
   const router = useRouter();
@@ -25,79 +25,56 @@ export default function DoctorDashboard() {
     if (status === "loading") return;
 
     if (status === "unauthenticated") {
-        router.push("/");
-        return;
+      router.push("/");
+      return;
     }
-    
+
     // Check if user is actually a doctor
     if (session?.user && (session.user as any).role !== 'doctor') {
-        // Optional: redirect to patient dashboard if strict
-        // router.push("/dashboard"); 
+      // Optional: redirect to patient dashboard if strict
+      // router.push("/dashboard"); 
     }
-     
+
     const userId = session?.user?.id;
     if (userId) {
-        // Set doctor basic info from session
-        const user = session.user as any;
-        setDoctor({
-            id: user.id,
-            name: user.name || "Doctor",
-            hospital: "Medanta Hospital", 
-            specialization: "General Physician", 
-            email: user.email || "",
-            role: "doctor"
-        });
+      // Set doctor basic info from session
+      const user = session.user as any;
+      setDoctor({
+        id: user.id,
+        name: user.name || "Doctor",
+        hospital: "Medanta Hospital",
+        specialization: "General Physician",
+        email: user.email || "",
+        role: "doctor"
+      } as any);
 
-        const fetchDashboardData = async (doctorId: string) => {
-            try {
-              const today = new Date().toISOString().split("T")[0];
-        
-              const { data: appointments } = await supabase
-                .from("appointments")
-                .select("*, patient:patients(*)")
-                .eq("doctor_id", doctorId)
-                .eq("scheduled_date", today)
-                .order("scheduled_time", { ascending: true });
-        
-              const { count: totalPatients } = await supabase
-                .from("doctor_patient_relations")
-                .select("*", { count: "exact", head: true })
-                .eq("doctor_id", doctorId);
-        
-              const { count: totalReports } = await supabase
-                .from("reports")
-                .select("*", { count: "exact", head: true })
-                .eq("doctor_id", doctorId);
-        
-              const completedToday = appointments?.filter(a => a.status === "completed").length || 0;
-        
-              setTodayAppointments(appointments || []);
-              setStats({
-                todayCount: appointments?.length || 0,
-                totalPatients: totalPatients || 0,
-                totalReports: totalReports || 0,
-                completedToday,
-              });
-            } catch (error) {
-              console.error("Error fetching dashboard data:", error);
-            } finally {
-              setIsLoading(false);
-            }
-        };
+      const fetchDashboardData = async (doctorId: string) => {
+        try {
+          const data = await getDoctorDashboardData(doctorId);
 
-        fetchDashboardData(userId);
+          setTodayAppointments(data.appointments as any);
+          setStats(data.stats);
+        } catch (error) {
+          console.error("Error fetching dashboard data:", error);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      fetchDashboardData(userId);
     } else {
-        // Fallback if no user ID found but authenticated (shouldn't happen, but prevent infinite load)
-        setIsLoading(false);
+      // Fallback if no user ID found but authenticated (shouldn't happen, but prevent infinite load)
+      setIsLoading(false);
     }
   }, [session, status, router]);
 
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(":");
-    const h = parseInt(hours);
-    const ampm = h >= 12 ? "PM" : "AM";
-    const hour = h % 12 || 12;
-    return `${hour}:${minutes} ${ampm}`;
+  const formatTime = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return "N/A";
+    }
   };
 
   if (isLoading) {
@@ -111,7 +88,7 @@ export default function DoctorDashboard() {
   return (
     <div className="min-h-screen bg-[#fafafa]">
       <DoctorSidebar doctorName={doctor?.name} specialization={doctor?.specialization} />
-      
+
       <main className="ml-64 p-8">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8">
@@ -173,7 +150,7 @@ export default function DoctorDashboard() {
             <div className="bg-white rounded-2xl border border-[#e4e4e7] p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold text-[#09090b]">Today&apos;s Schedule</h2>
-                <button 
+                <button
                   onClick={() => router.push("/doctor/appointments")}
                   className="text-sm text-[#0d9488] hover:underline"
                 >
@@ -188,31 +165,30 @@ export default function DoctorDashboard() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {todayAppointments.slice(0, 5).map((apt) => (
-                    <div 
+                  {todayAppointments.slice(0, 5).map((apt: any) => (
+                    <div
                       key={apt.id}
                       className="flex items-center gap-4 p-4 bg-[#fafafa] rounded-xl hover:bg-[#f4f4f5] transition-colors cursor-pointer"
                       onClick={() => router.push(`/doctor/attend/${apt.id}`)}
                     >
                       <div className="w-12 h-12 bg-[#0d9488]/10 rounded-full flex items-center justify-center">
                         <span className="text-[#0d9488] font-semibold text-sm">
-                          {apt.patient?.name?.split(" ").map(n => n[0]).join("") || "P"}
+                          {apt.patient?.name?.split(" ").map((n: string) => n[0]).join("") || "P"}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-[#09090b] truncate">{apt.patient?.name}</p>
-                        <p className="text-sm text-[#71717a] truncate">{apt.reason}</p>
+                        <p className="text-sm text-[#71717a] truncate">{apt.description || "Routine Checkup"}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-medium text-[#09090b]">{formatTime(apt.scheduled_time)}</p>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          apt.status === "completed" 
+                        <p className="text-sm font-medium text-[#09090b]">{formatTime(apt.start)}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${apt.status === "completed"
                             ? "bg-green-100 text-green-700"
                             : apt.status === "in_progress"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-amber-100 text-amber-700"
-                        }`}>
-                          {apt.status === "scheduled" ? "Upcoming" : apt.status}
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}>
+                          {apt.status === "booked" ? "Confirmed" : apt.status}
                         </span>
                       </div>
                     </div>
@@ -257,7 +233,7 @@ export default function DoctorDashboard() {
                 <button
                   onClick={() => {
                     if (todayAppointments.length > 0) {
-                      const nextApt = todayAppointments.find(a => a.status === "scheduled");
+                      const nextApt = todayAppointments.find(a => a.status === "booked" || a.status === "scheduled");
                       if (nextApt) router.push(`/doctor/attend/${nextApt.id}`);
                     }
                   }}

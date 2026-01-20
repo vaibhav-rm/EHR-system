@@ -3,21 +3,10 @@ import { fhirStore } from '@/lib/fhir-store';
 import { AppointmentSchema } from '@/lib/schemas';
 import { v4 as uuidv4 } from 'uuid';
 import { Appointment } from 'fhir/r4';
-import { auth } from '@/auth';
-import { AuditLogger } from '@/lib/audit';
-
-// Helper for unauthorized response
-const unauthorized = () => NextResponse.json(
-    { resourceType: 'OperationOutcome', issue: [{ severity: 'error', code: 'forbidden', diagnostics: 'Unauthorized access' }] },
-    { status: 403 }
-);
 
 // POST /api/fhir/Appointment
 export async function POST(req: NextRequest) {
     try {
-        const session = await auth();
-        if (!session?.user?.id) return unauthorized();
-
         const body = await req.json();
         const validationResult = AppointmentSchema.safeParse(body);
 
@@ -31,29 +20,9 @@ export async function POST(req: NextRequest) {
         const appointmentData: Appointment = {
             ...validationResult.data,
             id: uuidv4(),
-        } as Appointment;
+        } as Appointment; // Type assertion as Schema is subset of full FHIR resource
 
-        // Security: Ensure the creator is a participant (Patient or Practitioner)
-        // Check if session user is in participant list
-        // Note: For now, we trust the frontend to send the correct participants, but strictly we should force-add the current user.
-        // Let's verify:
-        const isParticipant = appointmentData.participant.some(p => p.actor?.reference?.includes(session.user.id));
-
-        // If not explicitly linked (maybe using 'Patient/123' format), we warn or force add? 
-        // For compliance, we must ensure traceability. 
-        // If I am a patient booking for myself, my ID should be there.
-        // If I am a doctor booking for a patient, my ID should be there.
-
-        if (!isParticipant) {
-            // Optional: Strict enforce. For prototype, we log a warning but proceed, OR we auto-add. 
-            // Let's Log strict warning in audit.
-            await AuditLogger.log('CREATE', 'Appointment', appointmentData.id || 'new', session.user.id, { warning: "Creator not in participants" });
-        }
-
-        const newAppointment = await fhirStore.create<Appointment>(appointmentData);
-
-        await AuditLogger.log('CREATE', 'Appointment', newAppointment.id || 'new', session.user.id);
-
+        const newAppointment = await fhirStore.create(appointmentData);
         return NextResponse.json(newAppointment, { status: 201 });
     } catch (error) {
         console.error('Error creating Appointment:', error);
@@ -67,32 +36,20 @@ export async function POST(req: NextRequest) {
 // GET /api/fhir/Appointment?patient=Patient/123&practitioner=Practitioner/456&status=booked
 export async function GET(req: NextRequest) {
     try {
-        const session = await auth();
-        if (!session?.user?.id) return unauthorized();
-
         const { searchParams } = new URL(req.url);
         const patientRef = searchParams.get('patient');
         const practitionerRef = searchParams.get('practitioner');
         const status = searchParams.get('status');
 
-        const appointments = await fhirStore.search<Appointment>('Appointment', (appt) => {
+        const appointments = await fhirStore.search('Appointment', (appt: Appointment) => {
             if (status && appt.status !== status) return false;
-
-            // Security: FILTER OUT appointments where the user is NOT a participant
-            // Regardless of what query params they sent, they can ONLY see appointments they are part of.
-            // Check participants
-            const isParticipant = appt.participant?.some(p =>
-                p.actor?.reference?.includes(session.user.id!) // Match strict ID in reference
-            );
-
-            if (!isParticipant) return false;
-
             return true;
         });
 
-        // Further filtering if params were provided
         let filteredAppointments = appointments;
 
+        // Manual filtering for participants (Patient/Practitioner) 
+        // (This remains valid as additional filtering over the result set)
         if (patientRef || practitionerRef) {
             filteredAppointments = filteredAppointments.filter((apt: any) => {
                 if (!apt.participant) return false;
@@ -104,8 +61,6 @@ export async function GET(req: NextRequest) {
                 });
             });
         }
-
-        await AuditLogger.log('SEARCH', 'Appointment', null, session.user.id, { count: filteredAppointments.length });
 
         // Wrap in Bundle
         const bundle = {

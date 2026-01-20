@@ -3,9 +3,9 @@
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { Search, User, Calendar, Droplet, Phone, Clock, FileText, ChevronRight } from "lucide-react";
 import DoctorSidebar from "@/components/DoctorSidebar";
+import { getDoctorPatients, getPatientDetailStats } from "@/app/actions/clinical";
 
 interface PatientRelation {
   id: string;
@@ -40,36 +40,30 @@ export default function PatientsPage() {
   useEffect(() => {
     if (status === "loading") return;
     if (status === "unauthenticated") {
-        router.push("/");
-        return;
+      router.push("/");
+      return;
     }
 
     const user = session?.user as any;
     if (user && user.role === 'doctor') {
-        const doctorData = {
-            id: user.id,
-            name: user.name || "Doctor",
-            hospital: "Medanta Hospital",
-            specialization: "General Physician",
-            email: user.email || "",
-            role: "doctor" as const
-        };
-        setDoctor(doctorData);
-        fetchPatients(doctorData.id);
+      const doctorData = {
+        id: user.id,
+        name: user.name || "Doctor",
+        hospital: "Medanta Hospital",
+        specialization: "General Physician",
+        email: user.email || "",
+        role: "doctor" as const
+      };
+      setDoctor(doctorData);
+      fetchPatients(doctorData.id);
     }
   }, [session, status, router]);
 
   const fetchPatients = async (doctorId: string) => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("doctor_patient_relations")
-        .select("*, patient:patients(*)")
-        .eq("doctor_id", doctorId)
-        .order("last_visit_date", { ascending: false });
-
-      if (error) throw error;
-      setPatients(data || []);
+      const data = await getDoctorPatients(doctorId);
+      setPatients(data as any[]);
     } catch (error) {
       console.error("Error fetching patients:", error);
     } finally {
@@ -79,17 +73,7 @@ export default function PatientsPage() {
 
   const fetchPatientDetails = async (patientId: string) => {
     try {
-      const { count: reportsCount } = await supabase
-        .from("reports")
-        .select("*", { count: "exact", head: true })
-        .eq("patient_id", patientId);
-
-      const { count: appointmentsCount } = await supabase
-        .from("appointments")
-        .select("*", { count: "exact", head: true })
-        .eq("patient_id", patientId)
-        .eq("doctor_id", doctor?.id);
-
+      const { reportsCount, appointmentsCount } = await getPatientDetailStats(patientId, doctor?.id || '');
       setPatientReports(reportsCount || 0);
       setPatientAppointments(appointmentsCount || 0);
     } catch (error) {
@@ -98,6 +82,7 @@ export default function PatientsPage() {
   };
 
   const calculateAge = (dob: string) => {
+    if (!dob) return "N/A";
     const birthDate = new Date(dob);
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
@@ -107,6 +92,7 @@ export default function PatientsPage() {
   };
 
   const formatDate = (date: string) => {
+    if (!date) return "N/A";
     return new Date(date).toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
@@ -116,7 +102,7 @@ export default function PatientsPage() {
 
   const filteredPatients = patients.filter((rel) =>
     rel.patient?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    rel.patient?.patient_id?.toLowerCase().includes(searchQuery.toLowerCase())
+    rel.patient_id?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleSelectPatient = (rel: PatientRelation) => {
@@ -127,7 +113,7 @@ export default function PatientsPage() {
   return (
     <div className="min-h-screen bg-[#fafafa]">
       <DoctorSidebar doctorName={doctor?.name} specialization={doctor?.specialization} />
-      
+
       <main className="ml-64 p-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-8">
@@ -166,14 +152,13 @@ export default function PatientsPage() {
                       <div
                         key={rel.id}
                         onClick={() => handleSelectPatient(rel)}
-                        className={`p-4 hover:bg-[#fafafa] transition-colors cursor-pointer ${
-                          selectedPatient?.id === rel.id ? "bg-[#0d9488]/5 border-l-4 border-[#0d9488]" : ""
-                        }`}
+                        className={`p-4 hover:bg-[#fafafa] transition-colors cursor-pointer ${selectedPatient?.id === rel.id ? "bg-[#0d9488]/5 border-l-4 border-[#0d9488]" : ""
+                          }`}
                       >
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 bg-[#0d9488]/10 rounded-full flex items-center justify-center">
                             <span className="text-[#0d9488] font-semibold">
-                              {rel.patient?.name?.split(" ").map(n => n[0]).join("") || "P"}
+                              {rel.patient?.name?.split(" ").map((n: string) => n[0]).join("") || "P"}
                             </span>
                           </div>
                           <div className="flex-1 min-w-0">
@@ -216,7 +201,7 @@ export default function PatientsPage() {
                       <Calendar className="h-4 w-4 text-[#a1a1aa]" />
                       <span className="text-[#71717a]">Age:</span>
                       <span className="text-[#09090b] font-medium">
-                        {selectedPatient.patient?.date_of_birth 
+                        {selectedPatient.patient?.date_of_birth
                           ? `${calculateAge(selectedPatient.patient.date_of_birth)} years`
                           : "N/A"}
                       </span>
@@ -254,20 +239,6 @@ export default function PatientsPage() {
                       <p className="text-xs text-[#71717a]">Reports</p>
                     </div>
                   </div>
-
-                  {selectedPatient.patient?.allergies && selectedPatient.patient.allergies.length > 0 && (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
-                      <p className="text-xs font-medium text-amber-700 mb-1">Allergies</p>
-                      <p className="text-sm text-amber-600">{selectedPatient.patient.allergies.join(", ")}</p>
-                    </div>
-                  )}
-
-                  {selectedPatient.patient?.chronic_conditions && selectedPatient.patient.chronic_conditions.length > 0 && (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl mb-4">
-                      <p className="text-xs font-medium text-blue-700 mb-1">Chronic Conditions</p>
-                      <p className="text-sm text-blue-600">{selectedPatient.patient.chronic_conditions.join(", ")}</p>
-                    </div>
-                  )}
 
                   <div className="text-xs text-[#a1a1aa] pt-4 border-t border-[#e4e4e7]">
                     <p>First visit: {selectedPatient.first_visit_date ? formatDate(selectedPatient.first_visit_date) : "N/A"}</p>

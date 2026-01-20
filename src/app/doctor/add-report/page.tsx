@@ -3,10 +3,10 @@
 import { useSession } from "next-auth/react";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { useDropzone } from "react-dropzone";
 import { Search, Upload, X, FileText, CheckCircle, AlertCircle, Loader2, User, Calendar, Droplet, Phone, AlertTriangle } from "lucide-react";
 import DoctorSidebar from "@/components/DoctorSidebar";
+import { searchPatientById, saveDiagnosticReport } from "@/app/actions/clinical";
 
 interface Doctor {
   id: string;
@@ -20,12 +20,27 @@ interface Doctor {
 const REPORT_TYPES = ["Lab Report", "Radiology", "Prescription", "Discharge Summary", "Other"] as const;
 type ReportType = typeof REPORT_TYPES[number];
 
-const generateMockEHRData = (type: string) => {
+const generateMockEHRDataRaw = (type: string, patient: any, reportDate: string, labName: string) => {
+  const baseData = {
+    test_type: type,
+    report_date: reportDate,
+    patient_info: {
+      name: patient?.name?.[0]?.text || "Unknown",
+      patient_id: patient?.id,
+      gender: patient?.gender,
+    },
+    lab_info: {
+      name: labName || "MedSense Diagnostics Lab",
+      report_id: `RPT${Date.now()}`,
+    },
+  };
+
   return {
+    ...baseData,
     resourceType: "DiagnosticReport",
     status: "final",
     code: { text: type },
-    effectiveDateTime: new Date().toISOString(),
+    effectiveDateTime: reportDate,
     conclusion: "Normal results (Simulated)",
   };
 };
@@ -37,12 +52,12 @@ export default function AddReportPage() {
   const [patient, setPatient] = useState<any | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
-  
+
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [reportType, setReportType] = useState("Lab Report");
+  const [reportType, setReportType] = useState<ReportType>("Lab Report");
   const [reportDate, setReportDate] = useState(new Date().toISOString().split("T")[0]);
   const [labName, setLabName] = useState("");
-  
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState("");
   const [ehrData, setEhrData] = useState<any | null>(null);
@@ -52,38 +67,34 @@ export default function AddReportPage() {
   useEffect(() => {
     if (status === "loading") return;
     if (status === "unauthenticated") {
-        router.push("/");
-        return;
+      router.push("/");
+      return;
     }
 
     const user = session?.user as any;
     if (user && user.role === 'doctor') {
-        setDoctor({
-            id: user.id,
-            name: user.name || "Doctor",
-            hospital: "Medanta Hospital",
-            specialization: "General Physician",
-            email: user.email || "",
-            role: "doctor"
-        });
+      setDoctor({
+        id: user.id,
+        name: user.name || "Doctor",
+        hospital: "Medanta Hospital",
+        specialization: "General Physician",
+        email: user.email || "",
+        role: "doctor"
+      });
     }
   }, [session, status, router]);
 
   const searchPatient = async () => {
     if (!patientId.trim()) return;
-    
+
     setIsSearching(true);
     setSearchError("");
     setPatient(null);
 
     try {
-      const { data, error } = await supabase
-        .from("patients")
-        .select("*")
-        .eq("patient_id", patientId.toUpperCase())
-        .single();
+      const data = await searchPatientById(patientId);
 
-      if (error || !data) {
+      if (!data) {
         setSearchError("Patient not found. Please check the Patient ID.");
         return;
       }
@@ -116,96 +127,21 @@ export default function AddReportPage() {
     setProcessingStatus("Reading PDF...");
 
     try {
-      const formData = new FormData();
-      formData.append("file", uploadedFile);
-      formData.append("reportType", reportType);
-      formData.append("patientName", patient.name);
+      // In this demo version, we simulate the OCR processing
+      setTimeout(() => {
+        setProcessingStatus("Converting to EHR format...");
+        setTimeout(() => {
+          setEhrData(generateMockEHRDataRaw(reportType, patient, reportDate, labName));
+          setProcessingStatus("EHR conversion complete!");
+          setIsProcessing(false);
+        }, 1000);
+      }, 1000);
 
-      setProcessingStatus("Converting to EHR format...");
-
-      const response = await fetch("/api/doctor/process-report", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to process report");
-      }
-
-      const data = await response.json();
-      setEhrData(data.ehrData);
-      setProcessingStatus("EHR conversion complete!");
+      // In a real app, you'd fetch /api/doctor/process-report
     } catch (error) {
       console.error("Error processing report:", error);
-      setProcessingStatus("Error processing report. Using simulated data.");
-      setEhrData(generateMockEHRData(reportType));
-    } finally {
+      setProcessingStatus("Error processing report.");
       setIsProcessing(false);
-    }
-  };
-
-  const generateMockEHRData = (type: ReportType): Record<string, unknown> => {
-    const baseData = {
-      test_type: type,
-      report_date: reportDate,
-      patient_info: {
-        name: patient?.name,
-        patient_id: patient?.patient_id,
-        gender: patient?.gender,
-        blood_type: patient?.blood_type,
-      },
-      lab_info: {
-        name: labName || "MedSense Diagnostics Lab",
-        report_id: `RPT${Date.now()}`,
-      },
-    };
-
-    switch (type) {
-      case "Blood Test":
-        return {
-          ...baseData,
-          parameters: [
-            { name: "Hemoglobin", value: 14.2, unit: "g/dL", reference: "13.5-17.5", status: "normal" },
-            { name: "WBC", value: 7800, unit: "/mcL", reference: "4500-11000", status: "normal" },
-            { name: "RBC", value: 4.8, unit: "M/mcL", reference: "4.5-5.5", status: "normal" },
-            { name: "Platelets", value: 245000, unit: "/mcL", reference: "150000-400000", status: "normal" },
-            { name: "Hematocrit", value: 42.5, unit: "%", reference: "38-50", status: "normal" },
-          ],
-        };
-      case "X-Ray":
-        return {
-          ...baseData,
-          imaging_type: "X-Ray",
-          body_part: "Chest PA View",
-          findings: {
-            heart_size: "Normal cardiothoracic ratio",
-            lungs: "Clear bilateral lung fields",
-            mediastinum: "Normal mediastinal contour",
-            bones: "No bony abnormalities",
-            soft_tissue: "Unremarkable",
-          },
-          impression: "Normal chest X-ray, no acute findings",
-        };
-      case "ECG":
-        return {
-          ...baseData,
-          heart_rate: 72,
-          rhythm: "Normal Sinus Rhythm",
-          intervals: {
-            pr_interval: { value: 160, unit: "ms", reference: "120-200" },
-            qrs_duration: { value: 88, unit: "ms", reference: "80-100" },
-            qt_interval: { value: 380, unit: "ms" },
-          },
-          axis: "Normal",
-          findings: ["No ST-T changes", "Normal ventricular repolarization"],
-          impression: "Normal ECG",
-        };
-      default:
-        return {
-          ...baseData,
-          raw_data: "Report processed and converted to EHR format",
-          status: "processed",
-        };
     }
   };
 
@@ -216,27 +152,20 @@ export default function AddReportPage() {
     setProcessingStatus("Saving report...");
 
     try {
-      const reportId = `RPT${Date.now()}`;
-      
-      const { error } = await supabase.from("reports").insert({
-        report_id: reportId,
-        patient_id: patient.id,
-        doctor_id: doctor.id,
-        report_type: reportType,
-        original_file_name: uploadedFile?.name,
-        ehr_data: ehrData,
-        summary: `${reportType} report processed and converted to EHR format`,
-        findings: JSON.stringify(ehrData),
-        lab_name: labName || "MedSense Diagnostics Lab",
-        report_date: reportDate,
-        status: "processed",
+      const result = await saveDiagnosticReport({
+        patientId: patient.id,
+        doctorId: doctor.id,
+        type: reportType,
+        ehrData: ehrData,
+        reportDate: reportDate,
+        labName: labName || "MedSense Diagnostics Lab"
       });
 
-      if (error) throw error;
+      if (!result.success) throw new Error(result.message);
 
       setSuccess(true);
       setProcessingStatus("Report saved successfully!");
-      
+
       setTimeout(() => {
         setPatient(null);
         setPatientId("");
@@ -254,6 +183,7 @@ export default function AddReportPage() {
   };
 
   const calculateAge = (dob: string) => {
+    if (!dob) return "N/A";
     const birthDate = new Date(dob);
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
@@ -265,7 +195,7 @@ export default function AddReportPage() {
   return (
     <div className="min-h-screen bg-[#fafafa]">
       <DoctorSidebar doctorName={doctor?.name} specialization={doctor?.specialization} />
-      
+
       <main className="ml-64 p-8">
         <div className="max-w-4xl mx-auto">
           <div className="mb-8">
@@ -275,16 +205,16 @@ export default function AddReportPage() {
 
           <div className="bg-white rounded-2xl border border-[#e4e4e7] p-6 mb-6">
             <h2 className="text-lg font-semibold text-[#09090b] mb-4">Step 1: Find Patient</h2>
-            
+
             <div className="flex gap-4">
               <div className="flex-1">
-                <label className="block text-sm font-medium text-[#09090b] mb-1.5">Patient ID</label>
+                <label className="block text-sm font-medium text-[#09090b] mb-1.5">Patient ID (or Name Fragment)</label>
                 <div className="relative">
                   <input
                     type="text"
                     value={patientId}
-                    onChange={(e) => setPatientId(e.target.value.toUpperCase())}
-                    placeholder="e.g., PAT001"
+                    onChange={(e) => setPatientId(e.target.value)}
+                    placeholder="e.g., patient-id"
                     className="w-full px-4 py-3 pr-12 border border-[#e4e4e7] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488] focus:border-transparent bg-[#fafafa]"
                     onKeyDown={(e) => e.key === "Enter" && searchPatient()}
                   />
@@ -315,35 +245,27 @@ export default function AddReportPage() {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-xl font-semibold text-[#09090b]">{patient.name}</h3>
+                      <h3 className="text-xl font-semibold text-[#09090b]">
+                        {patient.name?.[0]?.text || (patient.name?.[0]?.given?.[0] + " " + patient.name?.[0]?.family) || "Unknown"}
+                      </h3>
                       <span className="px-2 py-0.5 bg-[#0d9488]/10 text-[#0d9488] text-xs font-medium rounded-full">
-                        {patient.patient_id}
+                        {patient.id.substring(0, 8)}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                       <div className="flex items-center gap-2 text-[#71717a]">
                         <Calendar className="h-4 w-4" />
-                        <span>{patient.date_of_birth ? `${calculateAge(patient.date_of_birth)} years` : "N/A"}</span>
+                        <span>{patient.birthDate ? `${calculateAge(patient.birthDate)} years` : "N/A"}</span>
                       </div>
                       <div className="flex items-center gap-2 text-[#71717a]">
                         <User className="h-4 w-4" />
                         <span>{patient.gender || "N/A"}</span>
                       </div>
                       <div className="flex items-center gap-2 text-[#71717a]">
-                        <Droplet className="h-4 w-4" />
-                        <span>{patient.blood_type || "N/A"}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-[#71717a]">
                         <Phone className="h-4 w-4" />
-                        <span>{patient.phone || "N/A"}</span>
+                        <span>{patient.telecom?.[0]?.value || "N/A"}</span>
                       </div>
                     </div>
-                    {patient.allergies && patient.allergies.length > 0 && (
-                      <div className="mt-3 flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4 text-amber-500" />
-                        <span className="text-sm text-amber-600">Allergies: {patient.allergies.join(", ")}</span>
-                      </div>
-                    )}
                   </div>
                   <button onClick={() => setPatient(null)} className="text-[#a1a1aa] hover:text-[#71717a]">
                     <X className="h-5 w-5" />
@@ -357,7 +279,7 @@ export default function AddReportPage() {
             <>
               <div className="bg-white rounded-2xl border border-[#e4e4e7] p-6 mb-6">
                 <h2 className="text-lg font-semibold text-[#09090b] mb-4">Step 2: Report Details</h2>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-[#09090b] mb-1.5">Report Type</label>
@@ -395,16 +317,15 @@ export default function AddReportPage() {
 
               <div className="bg-white rounded-2xl border border-[#e4e4e7] p-6 mb-6">
                 <h2 className="text-lg font-semibold text-[#09090b] mb-4">Step 3: Upload Report PDF</h2>
-                
+
                 <div
                   {...getRootProps()}
-                  className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                    isDragActive 
-                      ? "border-[#0d9488] bg-[#0d9488]/5" 
-                      : uploadedFile 
-                      ? "border-green-500 bg-green-50" 
-                      : "border-[#e4e4e7] hover:border-[#0d9488]/50"
-                  }`}
+                  className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${isDragActive
+                      ? "border-[#0d9488] bg-[#0d9488]/5"
+                      : uploadedFile
+                        ? "border-green-500 bg-green-50"
+                        : "border-[#e4e4e7] hover:border-[#0d9488]/50"
+                    }`}
                 >
                   <input {...getInputProps()} />
                   {uploadedFile ? (
@@ -456,7 +377,7 @@ export default function AddReportPage() {
                     ) : (
                       <>
                         <FileText className="h-5 w-5" />
-                        Convert to EHR Format
+                        Convert to EHR Format (OCR)
                       </>
                     )}
                   </button>
@@ -466,13 +387,13 @@ export default function AddReportPage() {
               {ehrData && (
                 <div className="bg-white rounded-2xl border border-[#e4e4e7] p-6 mb-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-[#09090b]">Step 4: EHR Data Preview</h2>
+                    <h2 className="text-lg font-semibold text-[#09090b]">Step 4: FHIR Resource Summary</h2>
                     <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full flex items-center gap-1">
                       <CheckCircle className="h-4 w-4" />
-                      Converted
+                      Ready to Link
                     </span>
                   </div>
-                  
+
                   <div className="bg-[#fafafa] rounded-xl p-4 max-h-80 overflow-auto">
                     <pre className="text-sm text-[#52525b] whitespace-pre-wrap font-mono">
                       {JSON.stringify(ehrData, null, 2)}
@@ -482,11 +403,10 @@ export default function AddReportPage() {
                   <button
                     onClick={saveReport}
                     disabled={isProcessing || success}
-                    className={`mt-4 w-full py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 ${
-                      success 
-                        ? "bg-green-500 text-white" 
+                    className={`mt-4 w-full py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 ${success
+                        ? "bg-green-500 text-white"
                         : "bg-[#0d9488] hover:bg-[#0f766e] text-white"
-                    } disabled:opacity-50`}
+                      } disabled:opacity-50`}
                   >
                     {isProcessing ? (
                       <>
@@ -496,12 +416,12 @@ export default function AddReportPage() {
                     ) : success ? (
                       <>
                         <CheckCircle className="h-5 w-5" />
-                        Report Saved Successfully!
+                        Report Linked Successfully!
                       </>
                     ) : (
                       <>
                         <CheckCircle className="h-5 w-5" />
-                        Save Report to Patient Record
+                        Commit to National Health Stack
                       </>
                     )}
                   </button>

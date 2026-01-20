@@ -3,9 +3,9 @@
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { Search, Calendar, Clock, ChevronLeft, ChevronRight, PlayCircle } from "lucide-react";
 import DoctorSidebar from "@/components/DoctorSidebar";
+import { getDoctorAppointments } from "@/app/actions/clinical";
 
 interface Appointment {
   id: string;
@@ -14,11 +14,10 @@ interface Appointment {
     patient_id: string;
     blood_type?: string;
   };
-  reason: string;
-  scheduled_time: string;
+  description: string;
+  start: string;
   duration_minutes: number;
   status: string;
-  // ... other fields
 }
 
 interface Doctor {
@@ -43,37 +42,30 @@ export default function AppointmentsPage() {
   useEffect(() => {
     if (status === "loading") return;
     if (status === "unauthenticated") {
-        router.push("/");
-        return;
+      router.push("/");
+      return;
     }
-    
+
     const user = session?.user as any;
     if (user && user.role === 'doctor') {
-        const doctorData = {
-            id: user.id,
-            name: user.name || "Doctor",
-            hospital: "Medanta Hospital",
-            specialization: "General Physician",
-            email: user.email || "",
-            role: "doctor" as const
-        };
-        setDoctor(doctorData);
-        fetchAppointments(doctorData.id, selectedDate);
+      const doctorData = {
+        id: user.id,
+        name: user.name || "Doctor",
+        hospital: "Medanta Hospital",
+        specialization: "General Physician",
+        email: user.email || "",
+        role: "doctor" as const
+      };
+      setDoctor(doctorData);
+      fetchAppointments(doctorData.id, selectedDate);
     }
   }, [session, status, router, selectedDate]);
 
   const fetchAppointments = async (doctorId: string, date: string) => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("appointments")
-        .select("*, patient:patients(*)")
-        .eq("doctor_id", doctorId)
-        .eq("scheduled_date", date)
-        .order("scheduled_time", { ascending: true });
-
-      if (error) throw error;
-      setAppointments(data || []);
+      const data = await getDoctorAppointments(doctorId, date);
+      setAppointments(data as any[]);
     } catch (error) {
       console.error("Error fetching appointments:", error);
     } finally {
@@ -81,12 +73,13 @@ export default function AppointmentsPage() {
     }
   };
 
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(":");
-    const h = parseInt(hours);
-    const ampm = h >= 12 ? "PM" : "AM";
-    const hour = h % 12 || 12;
-    return `${hour}:${minutes} ${ampm}`;
+  const formatTime = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return "N/A";
+    }
   };
 
   const formatDate = (date: string) => {
@@ -106,9 +99,9 @@ export default function AppointmentsPage() {
 
   const filteredAppointments = appointments.filter((apt) => {
     const matchesStatus = statusFilter === "all" || apt.status === statusFilter;
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       apt.patient?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      apt.reason?.toLowerCase().includes(searchQuery.toLowerCase());
+      apt.description?.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesStatus && matchesSearch;
   });
 
@@ -125,7 +118,7 @@ export default function AppointmentsPage() {
   return (
     <div className="min-h-screen bg-[#fafafa]">
       <DoctorSidebar doctorName={doctor?.name} specialization={doctor?.specialization} />
-      
+
       <main className="ml-64 p-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-8">
@@ -182,6 +175,7 @@ export default function AppointmentsPage() {
                   className="px-4 py-2 border border-[#e4e4e7] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488] focus:border-transparent bg-white"
                 >
                   <option value="all">All Status</option>
+                  <option value="booked">Confirmed</option>
                   <option value="scheduled">Scheduled</option>
                   <option value="in_progress">In Progress</option>
                   <option value="completed">Completed</option>
@@ -218,7 +212,7 @@ export default function AppointmentsPage() {
                       <div className="flex items-center gap-4">
                         <div className="w-14 h-14 bg-[#0d9488]/10 rounded-full flex items-center justify-center">
                           <span className="text-[#0d9488] font-semibold">
-                            {apt.patient?.name?.split(" ").map(n => n[0]).join("") || "P"}
+                            {apt.patient?.name?.split(" ").map((n: string) => n[0]).join("") || "P"}
                           </span>
                         </div>
                         <div>
@@ -226,11 +220,11 @@ export default function AppointmentsPage() {
                             <h3 className="font-semibold text-[#09090b]">{apt.patient?.name}</h3>
                             <span className="text-xs text-[#a1a1aa]">{apt.patient?.patient_id}</span>
                           </div>
-                          <p className="text-sm text-[#71717a]">{apt.reason || "General consultation"}</p>
+                          <p className="text-sm text-[#71717a]">{apt.description || "General consultation"}</p>
                           <div className="flex items-center gap-4 mt-2 text-xs text-[#a1a1aa]">
                             <span className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              {formatTime(apt.scheduled_time)} • {apt.duration_minutes} min
+                              {formatTime(apt.start)}
                             </span>
                             {apt.patient?.blood_type && (
                               <span>Blood: {apt.patient.blood_type}</span>
@@ -241,7 +235,7 @@ export default function AppointmentsPage() {
 
                       <div className="flex items-center gap-4">
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(apt.status)}`}>
-                          {apt.status === "scheduled" ? "Upcoming" : apt.status.replace("_", " ")}
+                          {apt.status === "booked" ? "Confirmed" : apt.status.replace("_", " ")}
                         </span>
                         <button
                           onClick={() => router.push(`/doctor/attend/${apt.id}`)}

@@ -39,14 +39,16 @@ export const authConfig = {
         },
         // Add role to session
         async session({ session, token }) {
-            if (token.role && session.user) {
+            if (session.user) {
                 (session.user as any).role = token.role;
+                (session.user as any).id = token.id;
             }
             return session;
         },
         async jwt({ token, user }) {
             if (user) {
                 token.role = (user as any).role;
+                token.id = user.id;
             }
             return token;
         }

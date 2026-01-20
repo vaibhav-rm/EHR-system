@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { FileText, Calendar, Pill, Shield, Database, Users, ArrowRight, Hospital, Lock, Share2, Sparkles, ChevronDown, AlertTriangle, Stethoscope, X, Loader2 } from "lucide-react";
+import { FileText, Calendar, Pill, Shield, Database, Users, ArrowRight, Hospital, Lock, Share2, Sparkles, ChevronDown, AlertTriangle, Stethoscope, X, Loader2, ExternalLink } from "lucide-react";
 
 const logoUrl = "https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/render/image/public/project-uploads/813fae0f-1657-45b7-a53b-049057aaddf7/image-removebg-preview-33-1768639294584.png?width=8000&height=8000&resize=contain";
 
@@ -17,21 +17,16 @@ import { signIn } from "next-auth/react";
 import { signupUser } from "./actions/auth-actions";
 import { useRouter } from "next/navigation";
 
-// ... imports remain the same
-
 export default function LandingPage() {
   const router = useRouter();
   const [authTab, setAuthTab] = useState<"signin" | "signup">("signin");
   const [portalType, setPortalType] = useState<"patient" | "doctor">("patient");
-  // ... state remains the same
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [doctorId, setDoctorId] = useState("");
   const [currentBgIndex, setCurrentBgIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [showDoctorModal, setShowDoctorModal] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -46,47 +41,47 @@ export default function LandingPage() {
     setError("");
 
     try {
-        if (authTab === 'signin') {
-            const result = await signIn('credentials', {
-                redirect: false,
-                email,
-                password,
-            });
+      if (authTab === 'signin') {
+        const result = await signIn('credentials', {
+          redirect: false,
+          email,
+          password,
+        });
 
-            if (result?.error) {
-                if (result.error.includes("Email not confirmed")) {
-                     setError("Please confirm your email before logging in.");
-                } else {
-                     setError("Invalid email or password");
-                }
-            } else {
-                if (portalType === 'doctor') {
-                    router.push("/doctor");
-                } else {
-                    router.push("/dashboard");
-                }
-            }
+        if (result?.error) {
+          if (result.error.includes("Email not confirmed")) {
+            setError("Please confirm your email before logging in.");
+          } else {
+            setError("Invalid email or password");
+          }
         } else {
-            // Sign Up
-            const formData = new FormData();
-            formData.append('email', email);
-            formData.append('password', password);
-            formData.append('name', name);
-            formData.append('role', 'patient');
-            
-            const result = await signupUser(formData);
-            if (result.error) {
-                setError(result.error);
-            } else {
-                setAuthTab('signin');
-                setError("Account created! Please sign in.");
-                setPassword('');
-            }
+          if (portalType === 'doctor') {
+            router.push("/doctor");
+          } else {
+            router.push("/dashboard");
+          }
         }
+      } else {
+        // Sign Up
+        const formData = new FormData();
+        formData.append('email', email);
+        formData.append('password', password);
+        formData.append('name', name);
+        formData.append('role', portalType); // Use portalType for role
+
+        const result = await signupUser(formData);
+        if (result.error) {
+          setError(result.error);
+        } else {
+          setAuthTab('signin');
+          setError("Account created! Please sign in.");
+          setPassword('');
+        }
+      }
     } catch (err) {
-        setError("An unexpected error occurred.");
+      setError("An unexpected error occurred.");
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -123,9 +118,8 @@ export default function LandingPage() {
           {backgroundImages.map((img, index) => (
             <div
               key={index}
-              className={`absolute inset-0 transition-opacity duration-1000 ${
-                index === currentBgIndex ? "opacity-100" : "opacity-0"
-              }`}
+              className={`absolute inset-0 transition-opacity duration-1000 ${index === currentBgIndex ? "opacity-100" : "opacity-0"
+                }`}
             >
               <Image
                 src={img}
@@ -162,9 +156,9 @@ export default function LandingPage() {
               <a href="#auth" className="px-10 py-4 bg-[#0d9488] hover:bg-[#0f766e] text-white rounded-sm font-bold uppercase tracking-widest transition-all shadow-xl shadow-[#0d9488]/20 min-w-[240px]">
                 Access Dashboard
               </a>
-              <a href="#features" className="px-10 py-4 border border-white/30 hover:bg-white/10 text-white rounded-sm font-bold uppercase tracking-widest transition-all min-w-[240px] backdrop-blur-sm">
-                Explore Features
-              </a>
+              <Link href="/dashboard/patient/store" className="px-10 py-4 border border-white/30 hover:bg-white/10 text-white rounded-sm font-bold uppercase tracking-widest transition-all min-w-[240px] backdrop-blur-sm flex items-center justify-center gap-2">
+                Pharmacy Portal <ExternalLink className="h-4 w-4" />
+              </Link>
             </div>
 
             <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-50">
@@ -172,15 +166,14 @@ export default function LandingPage() {
               <ChevronDown className="h-5 w-5 text-white animate-bounce" />
             </div>
           </div>
-          
+
           <div className="absolute bottom-32 left-1/2 -translate-x-1/2 flex gap-3 z-20">
             {backgroundImages.map((_, index) => (
               <button
                 key={index}
                 onClick={() => setCurrentBgIndex(index)}
-                className={`h-1.5 transition-all duration-500 rounded-full ${
-                  index === currentBgIndex ? "bg-[#0d9488] w-10" : "bg-white/20 w-1.5 hover:bg-white/40"
-                }`}
+                className={`h-1.5 transition-all duration-500 rounded-full ${index === currentBgIndex ? "bg-[#0d9488] w-10" : "bg-white/20 w-1.5 hover:bg-white/40"
+                  }`}
               />
             ))}
           </div>
@@ -196,7 +189,7 @@ export default function LandingPage() {
               <p className="text-lg text-[#52525b] max-w-md leading-relaxed">
                 Connect your medical accounts, manage appointments, and access your unified health records with military-grade encryption.
               </p>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6">
                 <div className="flex items-start gap-4">
                   <div className="w-10 h-10 rounded-lg bg-[#0d9488]/10 flex items-center justify-center flex-shrink-0">
@@ -223,40 +216,36 @@ export default function LandingPage() {
               <div className="flex bg-[#f4f4f5] rounded-xl p-1 mb-6">
                 <button
                   onClick={() => setPortalType("patient")}
-                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                    portalType === "patient" ? "bg-white text-[#09090b] shadow-sm" : "text-[#71717a]"
-                  }`}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${portalType === "patient" ? "bg-white text-[#09090b] shadow-sm" : "text-[#71717a]"
+                    }`}
                 >
                   <Users className="h-4 w-4" />
                   Patient
                 </button>
                 <button
                   onClick={() => setPortalType("doctor")}
-                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                    portalType === "doctor" ? "bg-white text-[#09090b] shadow-sm" : "text-[#71717a]"
-                  }`}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${portalType === "doctor" ? "bg-white text-[#09090b] shadow-sm" : "text-[#71717a]"
+                    }`}
                 >
                   <Stethoscope className="h-4 w-4" />
                   Doctor
                 </button>
               </div>
 
-              {portalType === "patient" ? (
+              {portalType === "patient" || portalType === "doctor" ? (
                 <>
                   <div className="flex bg-[#f4f4f5] rounded-xl p-1 mb-8">
                     <button
                       onClick={() => setAuthTab("signin")}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                        authTab === "signin" ? "bg-white text-[#09090b] shadow-sm" : "text-[#71717a]"
-                      }`}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${authTab === "signin" ? "bg-white text-[#09090b] shadow-sm" : "text-[#71717a]"
+                        }`}
                     >
                       Sign In
                     </button>
                     <button
                       onClick={() => setAuthTab("signup")}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                        authTab === "signup" ? "bg-white text-[#09090b] shadow-sm" : "text-[#71717a]"
-                      }`}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${authTab === "signup" ? "bg-white text-[#09090b] shadow-sm" : "text-[#71717a]"
+                        }`}
                     >
                       Sign Up
                     </button>
@@ -271,7 +260,6 @@ export default function LandingPage() {
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           placeholder="Enter your name"
-                          name="name"
                           className="w-full px-4 py-3 border border-[#e4e4e7] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488] focus:border-transparent bg-[#fafafa]"
                           required
                         />
@@ -284,7 +272,6 @@ export default function LandingPage() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="Enter your email"
-                        name="email"
                         className="w-full px-4 py-3 border border-[#e4e4e7] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488] focus:border-transparent bg-[#fafafa]"
                         required
                       />
@@ -296,16 +283,15 @@ export default function LandingPage() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Enter your password"
-                        name="password"
                         className="w-full px-4 py-3 border border-[#e4e4e7] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488] focus:border-transparent bg-[#fafafa]"
                         required
                       />
                     </div>
-                    
+
                     {error && (
-                        <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
-                          {error}
-                        </div>
+                      <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
+                        {error}
+                      </div>
                     )}
 
                     <button
@@ -314,79 +300,29 @@ export default function LandingPage() {
                       className="w-full flex items-center justify-center gap-2 py-3 bg-[#0d9488] hover:bg-[#0f766e] text-white rounded-lg font-bold uppercase tracking-widest text-[10px] transition-all mt-6 disabled:opacity-70"
                     >
                       {isLoading ? (
-                          <>
-                           <Loader2 className="h-4 w-4 animate-spin" /> 
-                           {authTab === "signin" ? "Signing In..." : "Creating Account..."}
-                          </>
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {authTab === "signin" ? "Signing In..." : "Creating Account..."}
+                        </>
                       ) : (
-                          <>
-                           {authTab === "signin" ? "Sign In" : "Create Account"} <ArrowRight className="h-3 w-3" />
-                          </>
+                        <>
+                          {authTab === "signin" ? "Sign In" : "Create Account"} <ArrowRight className="h-3 w-3" />
+                        </>
                       )}
                     </button>
+                    {portalType === 'doctor' && authTab === 'signin' && (
+                      <p className="text-xs text-center text-[#71717a] mt-4">
+                        Demo credentials: <span className="font-mono bg-[#f4f4f5] px-2 py-0.5 rounded">doctor@example.com</span> / <span className="font-mono bg-[#f4f4f5] px-2 py-0.5 rounded">doctor123</span>
+                      </p>
+                    )}
+                    {portalType === 'patient' && authTab === 'signin' && (
+                      <p className="text-xs text-center text-[#71717a] mt-4">
+                        Demo credentials: <span className="font-mono bg-[#f4f4f5] px-2 py-0.5 rounded">patient@example.com</span> / <span className="font-mono bg-[#f4f4f5] px-2 py-0.5 rounded">patient123</span>
+                      </p>
+                    )}
                   </form>
                 </>
-              ) : (
-                  <form onSubmit={handleLogin} className="space-y-4"> {/* Use Unified handleLogin */}
-                  <div className="text-center mb-6">
-                    <div className="w-16 h-16 bg-[#0d9488]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Stethoscope className="h-8 w-8 text-[#0d9488]" />
-                    </div>
-                    <h3 className="font-bold text-[#09090b] text-lg">Doctor Portal Access</h3>
-                    <p className="text-sm text-[#71717a] mt-1">Enter your credentials to access the clinical dashboard</p>
-                  </div>
-
-                  {error && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-                      {error}
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-[#09090b] mb-1.5 uppercase tracking-wider text-[10px]">Email Address</label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="e.g., doctor@demo.com"
-                      className="w-full px-4 py-3 border border-[#e4e4e7] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488] focus:border-transparent bg-[#fafafa]"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[#09090b] mb-1.5 uppercase tracking-wider text-[10px]">Password</label>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      className="w-full px-4 py-3 border border-[#e4e4e7] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488] focus:border-transparent bg-[#fafafa]"
-                      required
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-[#0d9488] hover:bg-[#0f766e] text-white rounded-lg font-bold uppercase tracking-widest text-[10px] transition-all mt-6 disabled:opacity-50"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Authenticating...
-                      </>
-                    ) : (
-                      <>
-                        Access Doctor Portal <ArrowRight className="h-3 w-3" />
-                      </>
-                    )}
-                  </button>
-
-                  <p className="text-xs text-center text-[#71717a] mt-4">
-                    Demo credentials: <span className="font-mono bg-[#f4f4f5] px-2 py-0.5 rounded">doctor@demo.com</span> / <span className="font-mono bg-[#f4f4f5] px-2 py-0.5 rounded">Doctor@123</span>
-                  </p>
-                </form>
-              )}
+              ) : null}
             </div>
           </div>
         </section>
