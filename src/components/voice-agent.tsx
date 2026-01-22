@@ -10,6 +10,11 @@ import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
+type Message = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
 export function VoiceAgent() {
   const router = useRouter();
   const { isListening, transcript, startListening, stopListening, isSupported, setTranscript } = useVoiceAssistant();
@@ -17,6 +22,7 @@ export function VoiceAgent() {
   const [agentResponse, setAgentResponse] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isOpen, setIsOpen] = useState(false); // Toggle visibility of the chat bubble
+  const [history, setHistory] = useState<Message[]>([]); // Conversation history
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Auto-process when transcript is finalized (browser stops listening)
@@ -29,15 +35,23 @@ export function VoiceAgent() {
   const handleProcess = async (text: string) => {
     setIsProcessing(true);
     try {
-      const response = await processVoiceCommand(text);
+      // Add user message to history
+      const newHistory: Message[] = [...history, { role: 'user', content: text }];
+      
+      const response = await processVoiceCommand(text, newHistory);
       
       if (response.debugError) {
           console.error("VOICE AGENT ERROR (Server):", response.debugError);
           setAgentResponse(response.text); // Still show user-friendly message
+          // Add error response to history
+          setHistory([...newHistory, { role: 'assistant', content: response.text }]);
           return;
       }
 
       setAgentResponse(response.text);
+      
+      // Add assistant response to history
+      setHistory([...newHistory, { role: 'assistant', content: response.text }]);
 
       // Handle Actions
       if (response.action) {
@@ -49,23 +63,30 @@ export function VoiceAgent() {
 
       // Handle Audio (Robust Playback)
       if (response.audio) {
-          console.log("Audio received, length:", response.audio.length);
+          
           if (audioRef.current) {
+              console.log("[Voice Agent] Setting audio source...");
               audioRef.current.src = response.audio;
               audioRef.current.load(); // Ensure loaded
               
               try {
+                  console.log("[Voice Agent] Attempting to play audio...");
                   await audioRef.current.play();
                   setIsPlaying(true);
+                  console.log("[Voice Agent] ✅ Audio playing successfully!");
               } catch (playError) {
-                  console.error("Autoplay failed:", playError);
+                  console.error("[Voice Agent] ❌ Autoplay failed:", playError);
                   toast.error("Click the speaker icon to play audio (Autoplay blocked)");
               }
               
-              audioRef.current.onended = () => setIsPlaying(false);
+              audioRef.current.onended = () => {
+                  console.log("[Voice Agent] Audio playback ended");
+                  setIsPlaying(false);
+              };
           }
       } else {
-          console.warn("No audio data in response.");
+          console.warn("[Voice Agent] ⚠️ NO AUDIO DATA in response!");
+          console.warn("[Voice Agent] Response object:", response);
       }
 
     } catch (error) {
@@ -85,6 +106,12 @@ export function VoiceAgent() {
       setAgentResponse(''); // Clear previous response
       setIsOpen(true); // Auto-open when interacting
     }
+  };
+  
+  const resetConversation = () => {
+    setHistory([]);
+    setAgentResponse('');
+    toast.info('Conversation reset');
   };
   
   const playLastAudio = () => {
@@ -110,6 +137,9 @@ export function VoiceAgent() {
                       {/* Manual Replay Button */}
                       {!isListening && !isProcessing && agentResponse && (
                           <button onClick={playLastAudio} className="hover:text-primary" title="Replay Audio">🔊</button>
+                      )}
+                      {history.length > 0 && (
+                          <button onClick={resetConversation} className="hover:text-primary" title="Reset Conversation">🔄</button>
                       )}
                       <button onClick={() => setIsOpen(false)} className="hover:text-primary">✕</button>
                   </div>

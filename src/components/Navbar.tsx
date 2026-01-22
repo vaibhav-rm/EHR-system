@@ -5,6 +5,8 @@ import { Search, Bell, User, FileText, Calendar, X } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { VoiceAgent } from '@/components/voice-agent';
+import useSWR from 'swr';
+import { fetcher } from '@/lib/utils';
 
 interface SearchResult {
   id: string;
@@ -80,6 +82,15 @@ const Navbar = () => {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  const { data: patientData } = useSWR(
+      session?.user?.id ? `/api/fhir/Patient?id=${session.user.id}` : null,
+      fetcher
+  );
+
+  const realName = patientData?.entry?.[0]?.resource?.name?.[0] 
+     ? `${patientData.entry[0].resource.name[0].given?.join(' ') || ''} ${patientData.entry[0].resource.name[0].family || ''}`.trim()
+     : null;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -195,12 +206,16 @@ const Navbar = () => {
         >
           <div className="text-right hidden sm:block">
             <p className="text-sm font-medium text-[#09090b]">
-              {session?.user?.name || 'User'}
+              {realName || session?.user?.name || 'User'}
             </p>
-            <p className="text-xs text-zinc-500">Patient</p>
+            <p className="text-xs text-zinc-500 capitalize">{session?.user?.role || 'patient'}</p>
           </div>
           <span className="relative flex size-9 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-teal-400 to-teal-600 items-center justify-center border-2 border-teal-200">
-            <User className="h-5 w-5 text-white" />
+             {session?.user?.role === 'doctor' ? (
+                <span className="font-bold text-white text-xs">DR</span>
+            ) : (
+                <User className="h-5 w-5 text-white" />
+            )}
           </span>
         </button>
       </div>

@@ -39,8 +39,13 @@ export const authConfig = {
         },
         // Add role to session
         async session({ session, token }) {
-            if (token.role && session.user) {
-                (session.user as any).role = token.role;
+            if (session.user) {
+                if (token.sub) {
+                    session.user.id = token.sub;
+                }
+                if (token.role) {
+                    (session.user as any).role = token.role;
+                }
             }
             return session;
         },

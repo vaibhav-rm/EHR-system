@@ -4,8 +4,20 @@ import React, { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import DoctorSidebar from "@/components/DoctorSidebar";
 import { Doctor, Appointment, Patient, Report, Medicine } from "@/lib/types";
-import { supabase } from "@/lib/supabase";
-import { ArrowLeft, User, Calendar, Droplet, Phone, AlertTriangle, FileText, Pill, Clock, Plus, CheckCircle, X, Loader2, Eye } from "lucide-react";
+
+import { 
+    getAppointment, 
+    getPatientReports, 
+    getPatientPrescriptions, 
+    getPatientAppointments, 
+    createPrescription, 
+    updateAppointment,
+    getDoctorProfile,
+    createReport
+} from "@/app/actions/clinical";
+import { ArrowLeft, User, Calendar, Droplet, Phone, AlertTriangle, FileText, Pill, Clock, Plus, CheckCircle, X, Loader2, Eye, Shield } from "lucide-react";
+import { toast } from 'sonner';
+import { createNotification } from '@/app/actions/notifications';
 
 import { useSession } from "next-auth/react";
 
@@ -26,6 +38,88 @@ export default function AttendPatientPage({ params }: { params: Promise<{ id: st
   const [showAddMedicine, setShowAddMedicine] = useState(false);
   const [showSummaryView, setShowSummaryView] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationSteps, setVerificationSteps] = useState({ pdf: false, ipfs: false, blockchain: false });
+  const [ipfsHash, setIpfsHash] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  // Imports done via separate step if needed, or I assume they are handled by logic injection
+  // Since I can't inject imports easily here without rewriting top, I will use a separate replace call for imports
+  
+  const generateAndVerify = async () => {
+      if (!appointment || !doctor) return;
+      setIsVerifying(true);
+      try {
+          // 1. Generate PDF
+          const { generateConsultationPDF } = await import('@/lib/pdf-generator');
+          const pdfBlob = generateConsultationPDF({
+              patient: appointment.patient,
+              doctor: doctor,
+              appointment: appointment,
+              medicines: medicines,
+              summary: summary
+          });
+          setVerificationSteps(prev => ({ ...prev, pdf: true }));
+
+          // 2. Upload to Pinata
+          const fileName = `MedSense_Record_${appointment.id}_${Date.now()}.pdf`;
+          const { uploadToPinata } = await import('@/lib/pinata');
+          const cid = await uploadToPinata(pdfBlob, fileName);
+          
+          if (!cid) throw new Error("IPFS Upload Failed");
+          setIpfsHash(cid);
+          setVerificationSteps(prev => ({ ...prev, ipfs: true }));
+
+          // 3. Anchor on Blockchain
+          const { connectWallet, getContract, hashPDF } = await import('@/lib/web3');
+          const pdfHash = await hashPDF(pdfBlob);
+          const { signer } = await connectWallet();
+          const contract = await getContract(signer);
+          
+          const tx = await contract.storeRecord(pdfHash, cid);
+          await tx.wait();
+      setTxHash(tx.hash);
+          setVerificationSteps(prev => ({ ...prev, blockchain: true }));
+          
+          // 4. Save to Database (FHIR Store)
+          if (appointment.patient_id) {
+              await createReport({
+                  patient_id: appointment.patient_id,
+                  doctor_id: doctor.id,
+                  report_type: "Consultation Record",
+                  report_date: new Date().toISOString(),
+                  summary: "Verified Consultation Record anchored on Blockchain",
+                  original_file_name: fileName,
+                  ehr_data: {
+                      ipfs_cid: cid,
+                      tx_hash: tx.hash,
+                      pdf_hash: pdfHash
+                  }
+              });
+              
+              // Refresh reports list
+               const rpts = await getPatientReports(appointment.patient_id);
+               setReports(rpts || []);
+          }
+
+          toast.success("Record Verified & Anchored on Blockchain!");
+
+          // Download PDF
+          const url = URL.createObjectURL(pdfBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          a.click();
+
+      } catch (error: any) {
+          console.error("Verification Error:", error);
+          toast.error(error.message || "Verification Failed");
+      } finally {
+          setIsVerifying(false);
+      }
+  };
 
   const [newMedicine, setNewMedicine] = useState({
     medicine_name: "",
@@ -52,19 +146,18 @@ export default function AttendPatientPage({ params }: { params: Promise<{ id: st
     if (session?.user) {
         // Fetch full doctor details
         const fetchDoctor = async () => {
-            const { data, error } = await supabase
-                .from('doctors')
-                .select('*')
-                .eq('id', session.user.id) // Assuming session.user.id maps to doctor table id (UUID)
-                .single();
-            
+          try {
+            const data = await getDoctorProfile(session.user.id);
             if (data) {
                 setDoctor(data);
                 fetchAppointmentData(resolvedParams.id, data.id);
             } else {
-                console.error("Doctor profile not found", error);
-                // Fallback for demo or partial data if needed, or redirect
+                console.error("Doctor profile not found");
+                toast.error("Could not load doctor profile");
             }
+          } catch (error) {
+            console.error("Error fetching doctor profile:", error);
+          }
         };
         fetchDoctor();
     }
@@ -73,40 +166,30 @@ export default function AttendPatientPage({ params }: { params: Promise<{ id: st
   const fetchAppointmentData = async (appointmentId: string, doctorId: string) => {
     setIsLoading(true);
     try {
-      const { data: apt, error: aptError } = await supabase
-        .from("appointments")
-        .select("*, patient:patients(*)")
-        .eq("id", appointmentId)
-        .single();
-
-      if (aptError || !apt) throw aptError;
+      // Use FHIR actions
+      const apt = await getAppointment(appointmentId);
+      if (!apt) throw new Error("Appointment not found");
+      
       setAppointment(apt);
       setSummary(apt.summary || "");
 
-      const { data: rpts } = await supabase
-        .from("reports")
-        .select("*")
-        .eq("patient_id", apt.patient_id)
-        .order("report_date", { ascending: false });
-      setReports(rpts || []);
-
-      const { data: meds } = await supabase
-        .from("medicines")
-        .select("*")
-        .eq("patient_id", apt.patient_id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false });
-      setMedicines(meds || []);
-
-      const { data: pastApts } = await supabase
-        .from("appointments")
-        .select("*")
-        .eq("patient_id", apt.patient_id)
-        .eq("doctor_id", doctorId)
-        .eq("status", "completed")
-        .neq("id", appointmentId)
-        .order("scheduled_date", { ascending: false });
-      setPastAppointments(pastApts || []);
+      // Fetch related data
+      if (apt.patient_id) {
+          const [rpts, meds, allApts] = await Promise.all([
+              getPatientReports(apt.patient_id),
+              getPatientPrescriptions(apt.patient_id),
+              getPatientAppointments(apt.patient_id)
+          ]);
+          
+          setReports(rpts || []);
+          setMedicines(meds || []);
+          
+          // Filter past appointments
+          const past = allApts.filter((a: any) => 
+               a.status === 'completed' && a.id !== appointmentId
+          );
+          setPastAppointments(past || []);
+      }
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
@@ -131,33 +214,52 @@ export default function AttendPatientPage({ params }: { params: Promise<{ id: st
     });
   };
 
+// ... (existing imports, but need to be careful with replace)
+
+// This replace block targets the saveSummaryAndEnd function and imports
+// We need to inject imports at top first, but replacing huge block is risky.
+// Let's do imports first separately if possible, or use a smaller chunk for saveSummaryAndEnd.
+// Better to split used logic.
+
+// Step 1: Add imports (using a separate tool call for safety or combining if I can target top of file clearly)
+// Step 2: Update saveSummaryAndEnd
+// Step 3: Update addMedicine
+
+// Let's just update the function logic here.
+
   const addMedicine = async () => {
     if (!appointment || !doctor || !newMedicine.medicine_name || !newMedicine.dosage) return;
 
     setIsSaving(true);
     try {
-      const { error } = await supabase.from("medicines").insert({
-        patient_id: appointment.patient_id,
-        doctor_id: doctor.id,
-        appointment_id: appointment.id,
-        ...newMedicine,
-        start_date: new Date().toISOString().split("T")[0],
-        end_date: newMedicine.duration_days 
-          ? new Date(Date.now() + newMedicine.duration_days * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-          : null,
-        is_active: true,
-      });
+      const formData = new FormData();
+      formData.append("patientId", appointment.patient_id);
+      formData.append("doctorId", doctor.id);
+      formData.append("medicationName", newMedicine.medicine_name);
+      // Send granular fields
+      formData.append("dosageAmount", newMedicine.dosage);
+      formData.append("dosageUnit", newMedicine.dosage_unit);
+      formData.append("frequency", newMedicine.frequency);
+      formData.append("route", newMedicine.route);
+      formData.append("durationDays", newMedicine.duration_days.toString());
+      formData.append("instructions", newMedicine.instructions);
+      
+      // Also send the boolean flags for timing as a JSON string or separate fields if needed
+      // For simplicity, let's include them in instructions or a separate structure if backend supports.
+      // But looking at the backend schema next, we'll probably just map basic fields first.
+      // Let's stick to the core fields for now as they cover the PDF gaps.
 
-      if (error) throw error;
+      const result = await createPrescription(null, formData);
 
-      const { data: meds } = await supabase
-        .from("medicines")
-        .select("*")
-        .eq("patient_id", appointment.patient_id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false });
-      setMedicines(meds || []);
+      if (!result.success) throw new Error(result.message || "Failed to create prescription");
 
+      // Refresh medicines
+      if (appointment.patient_id) {
+          const meds = await getPatientPrescriptions(appointment.patient_id);
+          setMedicines(meds || []);
+      }
+
+      toast.success("Medicine added successfully");
       setShowAddMedicine(false);
       setNewMedicine({
         medicine_name: "",
@@ -175,6 +277,7 @@ export default function AttendPatientPage({ params }: { params: Promise<{ id: st
       });
     } catch (error) {
       console.error("Error adding medicine:", error);
+      toast.error("Failed to add medicine");
     } finally {
       setIsSaving(false);
     }
@@ -185,39 +288,26 @@ export default function AttendPatientPage({ params }: { params: Promise<{ id: st
 
     setIsSaving(true);
     try {
-      await supabase
-        .from("appointments")
-        .update({ summary, status: "completed" })
-        .eq("id", appointment.id);
-
-      const { data: existing } = await supabase
-        .from("doctor_patient_relations")
-        .select("*")
-        .eq("doctor_id", doctor.id)
-        .eq("patient_id", appointment.patient_id)
-        .single();
-
-      if (existing) {
-        await supabase
-          .from("doctor_patient_relations")
-          .update({
-            last_visit_date: new Date().toISOString().split("T")[0],
-            total_visits: existing.total_visits + 1,
-          })
-          .eq("id", existing.id);
-      } else {
-        await supabase.from("doctor_patient_relations").insert({
-          doctor_id: doctor.id,
-          patient_id: appointment.patient_id,
-          first_visit_date: new Date().toISOString().split("T")[0],
-          last_visit_date: new Date().toISOString().split("T")[0],
-          total_visits: 1,
-        });
+      await updateAppointment(appointment.id, {
+          summary: summary,
+          status: "completed"
+      });
+      
+      // Persistent Notification
+      if (appointment.patient_id) {
+          await createNotification(
+              appointment.patient_id,
+              `You have a new consultation summary from Dr. ${doctor.name}`,
+              'info',
+              `/appointments` // Link to patient's appointment view
+          );
       }
 
+      toast.success("Consultation saved & ended", { duration: 3000 });
       router.push("/doctor/appointments");
     } catch (error) {
       console.error("Error saving:", error);
+      toast.error("Failed to save consultation");
     } finally {
       setIsSaving(false);
     }
@@ -458,6 +548,14 @@ export default function AttendPatientPage({ params }: { params: Promise<{ id: st
                   End Session & Save
                 </button>
                 <button
+                  onClick={() => setShowVerificationModal(true)}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                   <Shield className="h-5 w-5" />
+                   Generate & Verify Record
+                </button>
+
+                <button
                   onClick={() => router.back()}
                   className="w-full py-3 border border-[#e4e4e7] hover:bg-[#f4f4f5] text-[#71717a] rounded-xl font-medium transition-colors"
                 >
@@ -622,6 +720,60 @@ export default function AttendPatientPage({ params }: { params: Promise<{ id: st
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Verification Modal */}
+      {showVerificationModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-bold">Secure Record Generation</h3>
+                    <button onClick={() => setShowVerificationModal(false)}><X className="h-5 w-5" /></button>
+                </div>
+                
+                <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${verificationSteps.pdf ? 'bg-green-100 text-green-600' : 'bg-gray-100'}`}>1</div>
+                        <p>Generate Secure PDF</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${verificationSteps.ipfs ? 'bg-green-100 text-green-600' : 'bg-gray-100'}`}>2</div>
+                        <p>Upload to IPFS (medical-network)</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${verificationSteps.blockchain ? 'bg-green-100 text-green-600' : 'bg-gray-100'}`}>3</div>
+                        <p>Anchor Hash on Sepolia Chain</p>
+                    </div>
+                </div>
+
+                {ipfsHash && (
+                    <div className="p-3 bg-gray-50 rounded text-xs break-all">
+                        <p className="font-semibold">IPFS CID:</p>
+                        {ipfsHash}
+                    </div>
+                )}
+                
+                {txHash && (
+                    <div className="p-3 bg-gray-50 rounded text-xs break-all">
+                        <p className="font-semibold">Transaction Hash:</p>
+                        {txHash}
+                    </div>
+                )}
+
+                <div className="pt-4 flex gap-3">
+                    <button 
+                        onClick={generateAndVerify} 
+                        disabled={isVerifying || !!txHash}
+                        className="flex-1 bg-[#0d9488] text-white py-2 rounded-xl disabled:opacity-50"
+                    >
+                        {isVerifying ? 'Processing...' : txHash ? 'Verified & Anchored' : 'Start Verification'}
+                    </button>
+                    {txHash && (
+                        <button onClick={() => setShowVerificationModal(false)} className="px-4 border rounded-xl">Close</button>
+                    )}
+                </div>
+            </div>
         </div>
       )}
 

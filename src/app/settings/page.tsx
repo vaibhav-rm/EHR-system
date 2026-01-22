@@ -6,10 +6,9 @@ import Navbar from "@/components/Navbar";
 import { User, Bell, Shield, Palette, Globe, ChevronRight, Camera, Mail, Phone, MapPin, Save } from "lucide-react";
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState("profile");
+  const [activeTab, setActiveTab] = useState("notifications");
 
   const tabs = [
-    { id: "profile", name: "Profile", icon: User },
     { id: "notifications", name: "Notifications", icon: Bell },
     { id: "privacy", name: "Privacy & Security", icon: Shield },
     { id: "appearance", name: "Appearance", icon: Palette },
@@ -53,124 +52,6 @@ export default function SettingsPage() {
             </div>
 
             <div className="lg:col-span-3">
-              {activeTab === "profile" && (
-                <div className="space-y-6">
-                  <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#e4e4e7]">
-                    <h2 className="text-lg font-semibold text-[#09090b] mb-6">Profile Information</h2>
-                    
-                    <div className="flex items-center gap-6 mb-8">
-                      <div className="relative">
-                        <img
-                          src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop"
-                          alt="Profile"
-                          className="w-24 h-24 rounded-full object-cover border-4 border-[#e4e4e7]"
-                        />
-                        <button className="absolute bottom-0 right-0 p-2 bg-[#0d9488] text-white rounded-full hover:bg-[#0f766e] transition-colors">
-                          <Camera className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-[#09090b]">Patient User</h3>
-                        <p className="text-sm text-[#71717a]">Member since December 2023</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-[#52525b] mb-2">First Name</label>
-                        <input
-                          type="text"
-                          defaultValue="Patient"
-                          className="w-full px-4 py-3 border border-[#e4e4e7] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20 focus:border-[#0d9488]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[#52525b] mb-2">Last Name</label>
-                        <input
-                          type="text"
-                          defaultValue="User"
-                          className="w-full px-4 py-3 border border-[#e4e4e7] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20 focus:border-[#0d9488]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[#52525b] mb-2">
-                          <Mail className="inline h-4 w-4 mr-1" />
-                          Email
-                        </label>
-                        <input
-                          type="email"
-                          defaultValue="patient@example.com"
-                          className="w-full px-4 py-3 border border-[#e4e4e7] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20 focus:border-[#0d9488]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[#52525b] mb-2">
-                          <Phone className="inline h-4 w-4 mr-1" />
-                          Phone
-                        </label>
-                        <input
-                          type="tel"
-                          defaultValue="+1 (555) 123-4567"
-                          className="w-full px-4 py-3 border border-[#e4e4e7] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20 focus:border-[#0d9488]"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-[#52525b] mb-2">
-                          <MapPin className="inline h-4 w-4 mr-1" />
-                          Address
-                        </label>
-                        <input
-                          type="text"
-                          defaultValue="123 Health Street, Medical City, MC 12345"
-                          className="w-full px-4 py-3 border border-[#e4e4e7] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20 focus:border-[#0d9488]"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end mt-6">
-                      <button className="inline-flex items-center gap-2 px-6 py-3 bg-[#0d9488] hover:bg-[#0f766e] text-white rounded-xl text-sm font-semibold transition-colors">
-                        <Save className="h-4 w-4" />
-                        Save Changes
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#e4e4e7]">
-                    <h2 className="text-lg font-semibold text-[#09090b] mb-4">Medical Information</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-[#52525b] mb-2">Blood Type</label>
-                        <select className="w-full px-4 py-3 border border-[#e4e4e7] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20 focus:border-[#0d9488] bg-white">
-                          <option>A+</option>
-                          <option>A-</option>
-                          <option>B+</option>
-                          <option>B-</option>
-                          <option>O+</option>
-                          <option>O-</option>
-                          <option>AB+</option>
-                          <option>AB-</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[#52525b] mb-2">Date of Birth</label>
-                        <input
-                          type="date"
-                          defaultValue="1985-06-15"
-                          className="w-full px-4 py-3 border border-[#e4e4e7] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20 focus:border-[#0d9488]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[#52525b] mb-2">Emergency Contact</label>
-                        <input
-                          type="tel"
-                          defaultValue="+1 (555) 987-6543"
-                          className="w-full px-4 py-3 border border-[#e4e4e7] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20 focus:border-[#0d9488]"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {activeTab === "notifications" && (
                 <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#e4e4e7]">

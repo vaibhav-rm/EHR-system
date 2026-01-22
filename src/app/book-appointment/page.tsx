@@ -1,56 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import { Calendar, Clock, MapPin, Video, ArrowLeft, User, Star, GraduationCap } from "lucide-react";
 import { useAppointments } from "@/lib/appointments-context";
 
-const doctors = [
-  {
-    name: "Dr. Vikram Singh",
-    specialty: "Cardiologist",
-    experience: "15+ years",
-    rating: 4.9,
-    fee: 1500,
-  },
-  {
-    name: "Dr. Priya Menon",
-    specialty: "General Physician",
-    experience: "10+ years",
-    rating: 4.8,
-    fee: 800,
-  },
-  {
-    name: "Dr. Amit Patel",
-    specialty: "Dermatologist",
-    experience: "12+ years",
-    rating: 4.7,
-    fee: 1200,
-  },
-  {
-    name: "Dr. Sunita Reddy",
-    specialty: "Orthopedic Surgeon",
-    experience: "18+ years",
-    rating: 4.9,
-    fee: 1800,
-  },
-  {
-    name: "Dr. Rajesh Sharma",
-    specialty: "Neurologist",
-    experience: "14+ years",
-    rating: 4.8,
-    fee: 1600,
-  },
-  {
-    name: "Dr. Kavita Joshi",
-    specialty: "Endocrinologist",
-    experience: "11+ years",
-    rating: 4.7,
-    fee: 1400,
-  },
-];
+import { getDoctors } from "@/app/actions/clinical";
 
 const timeSlots = [
   "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
@@ -60,25 +17,45 @@ const timeSlots = [
 export default function BookAppointmentPage() {
   const router = useRouter();
   const { addAppointment } = useAppointments();
-  const [selectedDoctor, setSelectedDoctor] = useState<typeof doctors[0] | null>(null);
+  const [doctors, setDoctors] = useState<any[]>([]);
+  const [loadingDoctors, setLoadingDoctors] = useState(true);
+  
+  const [selectedDoctor, setSelectedDoctor] = useState<any | null>(null);
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [appointmentType, setAppointmentType] = useState<"In-Person" | "Video">("In-Person");
   const [location, setLocation] = useState("Medanta Hospital, Gurugram");
 
+  useEffect(() => {
+    async function loadDoctors() {
+        try {
+            const data = await getDoctors();
+            setDoctors(data);
+            console.log(data);
+        } catch (error) {
+            console.error("Failed to load doctors", error);
+        } finally {
+            setLoadingDoctors(false);
+        }
+    }
+    loadDoctors();
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDoctor || !selectedDate || !selectedTime) return;
 
+    // Ideally call bookAppointment action here
     addAppointment({
+      doctorId: selectedDoctor.id,
       doctor: selectedDoctor.name,
-      specialty: selectedDoctor.specialty,
+      specialty: selectedDoctor.specialization,
       location: appointmentType === "Video" ? "Virtual Consultation" : location,
       date: selectedDate,
       time: selectedTime,
       type: appointmentType,
       status: "pending",
-      avatar: "",
+      avatar: selectedDoctor.profile_image_url || "",
     });
 
     router.push("/appointments");
@@ -112,39 +89,54 @@ export default function BookAppointmentPage() {
                   <User className="h-5 w-5 text-[#0d9488]" />
                   Select Doctor
                 </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {doctors.map((doctor) => (
-                    <button
-                      key={doctor.name}
-                      type="button"
-                      onClick={() => setSelectedDoctor(doctor)}
-                      className={`flex items-center gap-3 p-4 rounded-2xl border transition-all text-left ${
-                        selectedDoctor?.name === doctor.name
-                          ? "border-[#0d9488] bg-teal-50"
-                          : "border-[#e4e4e7] hover:border-[#0d9488]/30"
-                      }`}
-                    >
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                        {doctor.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-semibold text-[#09090b]">{doctor.name}</h4>
-                        <p className="text-xs text-[#71717a]">{doctor.specialty}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="flex items-center gap-0.5 text-xs text-[#71717a]">
-                            <GraduationCap className="h-3 w-3" />
-                            {doctor.experience}
-                          </span>
-                          <span className="flex items-center gap-0.5 text-xs text-yellow-600">
-                            <Star className="h-3 w-3 fill-yellow-400" />
-                            {doctor.rating}
-                          </span>
+                
+                {loadingDoctors ? (
+                    <div className="p-8 text-center text-sm text-[#71717a]">Loading doctors...</div>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {doctors.map((doctor) => (
+                        <button
+                        key={doctor.id}
+                        type="button"
+                        onClick={() => setSelectedDoctor(doctor)}
+                        className={`flex items-center gap-3 p-4 rounded-2xl border transition-all text-left ${
+                            selectedDoctor?.id === doctor.id
+                            ? "border-[#0d9488] bg-teal-50"
+                            : "border-[#e4e4e7] hover:border-[#0d9488]/30"
+                        }`}
+                        >
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0 overflow-hidden relative">
+                           {doctor.profile_image_url ? (
+                               <img src={doctor.profile_image_url} alt={doctor.name} className="w-full h-full object-cover" />
+                           ) : (
+                               doctor.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)
+                           )}
                         </div>
-                        <p className="text-xs font-semibold text-[#0d9488] mt-1">₹{doctor.fee}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                        <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-semibold text-[#09090b]">{doctor.name}</h4>
+                            <p className="text-xs text-[#71717a]">{doctor.specialization}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                            {doctor.years_of_experience > 0 && (
+                                <span className="flex items-center gap-0.5 text-xs text-[#71717a]">
+                                    <GraduationCap className="h-3 w-3" />
+                                    {doctor.years_of_experience}+ years
+                                </span>
+                            )}
+                            {doctor.rating > 0 && (
+                                <span className="flex items-center gap-0.5 text-xs text-yellow-600">
+                                    <Star className="h-3 w-3 fill-yellow-400" />
+                                    {doctor.rating}
+                                </span>
+                            )}
+                            </div>
+                            <p className="text-xs font-semibold text-[#0d9488] mt-1">
+                                {doctor.fee > 0 ? `₹${doctor.fee}` : "Payable at clinic"}
+                            </p>
+                        </div>
+                        </button>
+                    ))}
+                    </div>
+                )}
               </div>
 
               <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#e4e4e7]">
@@ -167,20 +159,49 @@ export default function BookAppointmentPage() {
                   Select Time
                 </h2>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {timeSlots.map((time) => (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => setSelectedTime(time)}
-                      className={`p-3 rounded-xl text-sm font-medium transition-all ${
-                        selectedTime === time
-                          ? "bg-[#0d9488] text-white"
-                          : "border border-[#e4e4e7] text-[#52525b] hover:border-[#0d9488]/30"
-                      }`}
-                    >
-                      {time}
-                    </button>
-                  ))}
+                  {timeSlots.map((time) => {
+                    const isPast = (() => {
+                        if (!selectedDate) return false;
+                        const today = new Date();
+                        const selected = new Date(selectedDate);
+                        
+                        // If selected date is in future, time is valid
+                        if (selected.setHours(0,0,0,0) > today.setHours(0,0,0,0)) return false;
+                        
+                        // If selected date is today, check time
+                        if (selected.toDateString() === today.toDateString()) {
+                            const [timeStr, period] = time.split(' ');
+                            const [hoursStr, minutesStr] = timeStr.split(':');
+                            let hours = parseInt(hoursStr);
+                            if (period === 'PM' && hours !== 12) hours += 12;
+                            if (period === 'AM' && hours === 12) hours = 0;
+                            
+                            const slotTime = new Date(today);
+                            slotTime.setHours(hours, parseInt(minutesStr), 0);
+                            
+                            return slotTime < new Date();
+                        }
+                        return false;
+                    })();
+
+                    return (
+                        <button
+                        key={time}
+                        type="button"
+                        disabled={isPast}
+                        onClick={() => !isPast && setSelectedTime(time)}
+                        className={`p-3 rounded-xl text-sm font-medium transition-all ${
+                            selectedTime === time
+                            ? "bg-[#0d9488] text-white"
+                            : isPast 
+                                ? "bg-gray-100 text-gray-400 cursor-not-allowed border border-transparent"
+                                : "border border-[#e4e4e7] text-[#52525b] hover:border-[#0d9488]/30"
+                        }`}
+                        >
+                        {time}
+                        </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -245,7 +266,7 @@ export default function BookAppointmentPage() {
                   <div className="flex justify-between">
                     <span className="text-[#71717a]">Specialty</span>
                     <span className="font-medium text-[#09090b]">
-                      {selectedDoctor?.specialty || "-"}
+                      {selectedDoctor?.specialization || "-"}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -276,7 +297,7 @@ export default function BookAppointmentPage() {
                     <div className="flex justify-between">
                       <span className="text-[#71717a]">Consultation Fee</span>
                       <span className="font-bold text-[#09090b]">
-                        {selectedDoctor ? `₹${selectedDoctor.fee}` : "-"}
+                        {selectedDoctor ? (selectedDoctor.fee > 0 ? `₹${selectedDoctor.fee}` : "Free / TBD") : "-"}
                       </span>
                     </div>
                   </div>

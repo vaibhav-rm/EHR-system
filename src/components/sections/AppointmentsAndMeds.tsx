@@ -9,9 +9,11 @@ import { format } from 'date-fns';
 import { useSession } from 'next-auth/react';
 
 const UpcomingAppointments = () => {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
+  const userId = session?.user?.id;
+  
   const { data: bundle, isLoading } = useSWR(
-    status === 'authenticated' ? '/api/fhir/Appointment?status=booked' : null, 
+    status === 'authenticated' && userId ? `/api/fhir/Appointment?status=booked&patient=Patient/${userId}` : null, 
     fetcher
   );
   
@@ -37,24 +39,35 @@ const UpcomingAppointments = () => {
         {!isLoading && appointments.length === 0 && <p className="text-sm text-gray-500">No upcoming appointments.</p>}
         
         {appointments.slice(0, 3).map((apt: any) => {
-           const doctorName = apt.participant?.find((p: any) => p.actor?.display)?.actor.display || 'Unknown Doctor';
+           const doctorName = apt.participant?.find((p: any) => p.actor?.reference?.startsWith('Practitioner'))?.actor?.display || 'Unknown Doctor';
+           // Also try getting doctor name from enriched fields if API returns them, but FHIR route returns raw resource usually
+           // unless we updated route to enrich. The route I saw returns raw valid FHIR. 
+           // Display comes from actor.display if saved, otherwise we might see 'Unknown' if not saved.
+           // Since we can't easily fetch doctor name here without extra calls, let's hope it's in actor.display or we just show 'Doctor'.
+           
+           const isMissed = apt.status === 'booked' && new Date(apt.start).getTime() < Date.now();
+           const displayStatus = isMissed ? 'missed' : apt.status;
+
            const dateStr = safeFormatDate(apt.start, 'yyyy-MM-dd');
            const timeStr = safeFormatDate(apt.start, 'h:mm a');
            
            return (
               <div 
                 key={apt.id} 
-                className="group flex flex-col md:flex-row items-start md:items-center justify-between p-5 bg-white rounded-[1.5rem] border border-[#e4e4e7] soft-shadow transition-all hover:border-[#0d9488]/30"
+                className={`group flex flex-col md:flex-row items-start md:items-center justify-between p-5 bg-white rounded-[1.5rem] border soft-shadow transition-all hover:border-[#0d9488]/30 ${displayStatus === 'missed' ? 'border-red-100 bg-red-50/10' : 'border-[#e4e4e7]'}`}
               >
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center text-white font-bold">
-                    {doctorName.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                    {doctorName.includes('Dr.') ? doctorName.split(' ')[1]?.[0] : doctorName[0]}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-[0.875rem] font-semibold text-[#09090b]">{doctorName}</h4>
-                      <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${apt.status === 'booked' ? 'bg-teal-50 text-teal-600' : 'bg-orange-50 text-orange-600'}`}>
-                        {apt.status}
+                      <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                          displayStatus === 'booked' ? 'bg-teal-50 text-teal-600' : 
+                          displayStatus === 'missed' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
+                      }`}>
+                        {displayStatus}
                       </span>
                     </div>
                     <p className="text-xs text-[#71717a]">{apt.description || 'General Consultation'}</p>
@@ -67,12 +80,21 @@ const UpcomingAppointments = () => {
                     </div>
                   </div>
                 </div>
-                <Link 
-                  href={`/appointments/${apt.id}`}
-                  className="mt-4 md:mt-0 px-4 py-2 border border-[#e4e4e7] rounded-xl text-sm font-semibold text-[#52525b] hover:bg-[#f4f4f5] transition-colors"
-                >
-                  Manage
-                </Link>
+                {displayStatus === 'missed' ? (
+                     <Link 
+                     href={`/book-appointment`} // Ideally pass doctor ID to pre-fill
+                     className="mt-4 md:mt-0 px-4 py-2 bg-red-50 text-red-700 border border-red-100 rounded-xl text-sm font-semibold hover:bg-red-100 transition-colors"
+                   >
+                     Reschedule
+                   </Link>
+                ) : (
+                    <Link 
+                    href={`/appointments/${apt.id}`}
+                    className="mt-4 md:mt-0 px-4 py-2 border border-[#e4e4e7] rounded-xl text-sm font-semibold text-[#52525b] hover:bg-[#f4f4f5] transition-colors"
+                    >
+                    Manage
+                    </Link>
+                )}
               </div>
            );
         })}
@@ -82,16 +104,18 @@ const UpcomingAppointments = () => {
 };
 
 const MedicationSection = () => {
-    const { status } = useSession();
+    const { data: session, status } = useSession();
+    const userId = session?.user?.id;
+
     const { data: bundle, isLoading } = useSWR(
-        status === 'authenticated' ? '/api/fhir/MedicationRequest?status=active' : null, 
+        status === 'authenticated' && userId ? `/api/fhir/MedicationRequest?status=active&patient=Patient/${userId}` : null, 
         fetcher
     );
     const meds = bundle?.entry?.map((e: any) => e.resource) || [];
 
     // Also fetch appointments for Health Insights summary
     const { data: apptBundle, isLoading: isLoadingAppts } = useSWR(
-      status === 'authenticated' ? '/api/fhir/Appointment?status=booked' : null, 
+      status === 'authenticated' && userId ? `/api/fhir/Appointment?status=booked&patient=Patient/${userId}` : null, 
       fetcher
     );
     const appointmentCount = apptBundle?.entry?.length || 0;
@@ -104,6 +128,7 @@ const MedicationSection = () => {
       </div>
       <div className="space-y-4">
         {isLoading && <p className="text-sm text-gray-500">Loading medications...</p>}
+        {!isLoading && meds.length === 0 && <p className="text-sm text-gray-500">No active medications.</p>}
         {meds.slice(0, 3).map((med: any, idx: number) => (
           <div key={idx} className="p-5 bg-white rounded-[1.5rem] border border-[#e4e4e7] soft-shadow">
             <div className="flex items-start justify-between">
@@ -183,10 +208,12 @@ const MedicationSection = () => {
 };
 
 const AppointmentsAndMeds = () => {
-    const { status } = useSession();
+    const { data: session, status } = useSession();
+    const userId = session?.user?.id;
+
     // 1. Fetch real DiagnosticReports
     const { data: reportBundle, isLoading } = useSWR(
-        status === 'authenticated' ? '/api/fhir/DiagnosticReport' : null, 
+        status === 'authenticated' && userId ? `/api/fhir/DiagnosticReport?patient=Patient/${userId}` : null, 
         fetcher
     );
     

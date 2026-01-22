@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { getDoctorAppointments } from "@/app/actions/clinical";
 import { Search, Calendar, Clock, ChevronLeft, ChevronRight, PlayCircle } from "lucide-react";
 import DoctorSidebar from "@/components/DoctorSidebar";
 
@@ -65,15 +66,15 @@ export default function AppointmentsPage() {
   const fetchAppointments = async (doctorId: string, date: string) => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("appointments")
-        .select("*, patient:patients(*)")
-        .eq("doctor_id", doctorId)
-        .eq("scheduled_date", date)
-        .order("scheduled_time", { ascending: true });
+      // Use the server action to get appointments from FHIR store
+      const allAppointments = await getDoctorAppointments(doctorId);
+      
+      // Filter by selected date
+      const daysAppointments = allAppointments.filter((apt: any) => 
+        apt.scheduled_date === date
+      );
 
-      if (error) throw error;
-      setAppointments(data || []);
+      setAppointments(daysAppointments || []);
     } catch (error) {
       console.error("Error fetching appointments:", error);
     } finally {
@@ -117,6 +118,7 @@ export default function AppointmentsPage() {
       case "completed": return "bg-green-100 text-green-700";
       case "in_progress": return "bg-blue-100 text-blue-700";
       case "cancelled": return "bg-red-100 text-red-700";
+      case "missed": return "bg-red-50 text-red-600 border border-red-200";
       case "no_show": return "bg-gray-100 text-gray-700";
       default: return "bg-amber-100 text-amber-700";
     }

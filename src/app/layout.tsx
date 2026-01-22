@@ -5,6 +5,7 @@ import ErrorReporter from "@/components/ErrorReporter";
 import Script from "next/script";
 import { AppointmentsProvider } from "@/lib/appointments-context";
 import Providers from "@/components/providers";
+import { VoiceAgent } from "@/components/voice-agent";
 
 export const metadata: Metadata = {
   title: "MedSense Dashboard",
@@ -41,6 +42,7 @@ export default function RootLayout({
             {children}
           </AppointmentsProvider>
         </Providers>
+        <VoiceAgent />
         <VisualEditsMessenger />
       </body>
     </html>

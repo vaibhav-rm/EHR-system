@@ -36,6 +36,8 @@ interface RecordType {
   summary: string;
   results?: { [key: string]: { value: string; normal: string; status: string } };
   vitals?: { bp: string; pulse: string; bmi: string; temperature: string };
+  ipfs_cid?: string;
+  tx_hash?: string;
 }
 
 export default function RecordsPage() {
@@ -59,6 +61,22 @@ export default function RecordsPage() {
     const r = e.resource;
     const hospitalName = r.performer?.[0]?.display || "Unknown Hospital";
     const hospitalTag = Object.keys(hospitalColors).find(tag => hospitalName.includes(tag)) || "Default";
+    
+    let ipfs_cid = undefined;
+    let tx_hash = undefined;
+    
+    // Extract IPFS CID from presentedForm if available
+    if (r.presentedForm?.[0]?.data) {
+        try {
+            // Decode base64 data
+            const jsonString = atob(r.presentedForm[0].data);
+            const data = JSON.parse(jsonString);
+            ipfs_cid = data.ipfs_cid;
+            tx_hash = data.tx_hash;
+        } catch (err) {
+            console.error("Error decoding record data", err);
+        }
+    }
 
     return {
         id: r.id,
@@ -69,7 +87,9 @@ export default function RecordsPage() {
         hospitalTag: hospitalTag,
         category: r.category?.[0]?.coding?.[0]?.display || "General",
         type: "Routine",
-        summary: r.conclusion || "No summary provided.", 
+        summary: r.conclusion || "No summary provided.",
+        ipfs_cid,
+        tx_hash
     };
   });
 
@@ -195,10 +215,23 @@ export default function RecordsPage() {
                         <Eye className="h-4 w-4" />
                         View
                       </button>
-                      <button className="inline-flex items-center gap-2 px-4 py-2 border border-[#e4e4e7] rounded-xl text-sm font-medium text-[#52525b] hover:bg-[#f4f4f5] transition-colors">
-                        <Download className="h-4 w-4" />
-                        Download
-                      </button>
+                      
+                      {record.ipfs_cid ? (
+                        <a 
+                            href={`https://gateway.pinata.cloud/ipfs/${record.ipfs_cid}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-4 py-2 border border-[#e4e4e7] rounded-xl text-sm font-medium text-[#52525b] hover:bg-[#f4f4f5] transition-colors"
+                        >
+                            <Download className="h-4 w-4" />
+                            Download
+                        </a>
+                      ) : (
+                        <button className="inline-flex items-center gap-2 px-4 py-2 border border-[#e4e4e7] rounded-xl text-sm font-medium text-[#52525b] opacity-50 cursor-not-allowed">
+                            <Download className="h-4 w-4" />
+                            Download
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -269,6 +302,27 @@ export default function RecordsPage() {
                 <p className="text-sm text-[#52525b] leading-relaxed">{selectedRecord.summary}</p>
               </div>
 
+            {selectedRecord.ipfs_cid && (
+                <div>
+                    <h3 className="font-semibold text-[#09090b] mb-2 flex items-center gap-2">
+                        <Tag className="h-4 w-4 text-[#0d9488]" />
+                        Blockchain Verification
+                    </h3>
+                    <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-200 text-xs break-all space-y-2">
+                        <div>
+                            <span className="block font-semibold text-zinc-600">IPFS CID:</span>
+                            <span className="text-zinc-500 font-mono">{selectedRecord.ipfs_cid}</span>
+                        </div>
+                        {selectedRecord.tx_hash && (
+                            <div>
+                                <span className="block font-semibold text-zinc-600">Transaction Hash:</span>
+                                <span className="text-zinc-500 font-mono">{selectedRecord.tx_hash}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+             )}
+
               {selectedRecord.results && (
                 <div>
                   <h3 className="font-semibold text-[#09090b] mb-3 flex items-center gap-2">
@@ -325,10 +379,23 @@ export default function RecordsPage() {
               )}
 
               <div className="flex gap-3 pt-4 border-t border-[#e4e4e7]">
-                <button className="flex-1 py-3 border border-[#e4e4e7] rounded-xl font-semibold text-[#52525b] hover:bg-[#f4f4f5] transition-colors flex items-center justify-center gap-2">
-                  <Download className="h-4 w-4" />
-                  Download PDF
-                </button>
+                {selectedRecord.ipfs_cid ? (
+                    <a 
+                        href={`https://gateway.pinata.cloud/ipfs/${selectedRecord.ipfs_cid}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex-1 py-3 border border-[#e4e4e7] rounded-xl font-semibold text-[#52525b] hover:bg-[#f4f4f5] transition-colors flex items-center justify-center gap-2"
+                    >
+                        <Download className="h-4 w-4" />
+                        Download PDF
+                    </a>
+                ) : (
+                    <button disabled className="flex-1 py-3 border border-[#e4e4e7] rounded-xl font-semibold text-[#52525b] opacity-50 flex items-center justify-center gap-2">
+                        <Download className="h-4 w-4" />
+                        No Document
+                    </button>
+                )}
+
                 <button 
                   onClick={() => setSelectedRecord(null)}
                   className="flex-1 py-3 bg-[#0d9488] hover:bg-[#0f766e] text-white rounded-xl font-semibold transition-colors"

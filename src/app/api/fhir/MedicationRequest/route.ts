@@ -34,14 +34,26 @@ export async function POST(req: NextRequest) {
 }
 
 // GET /api/fhir/MedicationRequest?patient=Patient/123
+import { auth } from '@/auth';
+
 export async function GET(req: NextRequest) {
     try {
+        const session = await auth();
+        if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+
         const { searchParams } = new URL(req.url);
         const patientRef = searchParams.get('patient');
         const status = searchParams.get('status');
 
         const prescriptions = await fhirStore.search('MedicationRequest', (req: MedicationRequest) => {
             if (status && req.status !== status) return false;
+
+            // Security: Ensure user is related (Subject or Requester)
+            const isSubject = req.subject?.reference?.includes(session.user.id!);
+            const isRequester = req.requester?.reference?.includes(session.user.id!);
+
+            if (!isSubject && !isRequester) return false;
+
             if (patientRef && req.subject?.reference !== patientRef) return false;
             return true;
         });

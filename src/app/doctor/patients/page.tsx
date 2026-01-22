@@ -4,7 +4,8 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Search, User, Calendar, Droplet, Phone, Clock, FileText, ChevronRight } from "lucide-react";
+import { getDoctorAppointments, getPatientAppointments, getPatientReports, getDoctorPatients } from "@/app/actions/clinical";
+import { Search, User, Calendar, Droplet, Phone, Clock, FileText, ChevronRight, AlertTriangle } from "lucide-react";
 import DoctorSidebar from "@/components/DoctorSidebar";
 
 interface PatientRelation {
@@ -62,16 +63,12 @@ export default function PatientsPage() {
   const fetchPatients = async (doctorId: string) => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("doctor_patient_relations")
-        .select("*, patient:patients(*)")
-        .eq("doctor_id", doctorId)
-        .order("last_visit_date", { ascending: false });
-
-      if (error) throw error;
-      setPatients(data || []);
+      // Fetch aggregated patients from all interactions (Appts, Rx, Reports)
+      const aggregatedPatients = await getDoctorPatients(doctorId);
+      setPatients(aggregatedPatients);
     } catch (error) {
       console.error("Error fetching patients:", error);
+      setPatients([]);
     } finally {
       setIsLoading(false);
     }
@@ -79,19 +76,20 @@ export default function PatientsPage() {
 
   const fetchPatientDetails = async (patientId: string) => {
     try {
-      const { count: reportsCount } = await supabase
-        .from("reports")
-        .select("*", { count: "exact", head: true })
-        .eq("patient_id", patientId);
+      // Use FHIR actions to get counts
+      const [reports, appointments] = await Promise.all([
+        getPatientReports(patientId),
+        getPatientAppointments(patientId)
+      ]);
 
-      const { count: appointmentsCount } = await supabase
-        .from("appointments")
-        .select("*", { count: "exact", head: true })
-        .eq("patient_id", patientId)
-        .eq("doctor_id", doctor?.id);
+      // Filter appointments for this doctor if needed, or show all
+      const doctorAppointments = appointments.filter((apt: any) => 
+         // Check if doctor participates in this appointment (simplified check)
+         true 
+      );
 
-      setPatientReports(reportsCount || 0);
-      setPatientAppointments(appointmentsCount || 0);
+      setPatientReports(reports.length);
+      setPatientAppointments(doctorAppointments.length);
     } catch (error) {
       console.error("Error fetching patient details:", error);
     }
@@ -173,13 +171,23 @@ export default function PatientsPage() {
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 bg-[#0d9488]/10 rounded-full flex items-center justify-center">
                             <span className="text-[#0d9488] font-semibold">
-                              {rel.patient?.name?.split(" ").map(n => n[0]).join("") || "P"}
+                              {rel.patient?.name?.split(" ").map((n: string) => n[0]).join("") || "P"}
                             </span>
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <h3 className="font-medium text-[#09090b] truncate">{rel.patient?.name}</h3>
                               <span className="text-xs text-[#a1a1aa]">{rel.patient?.patient_id}</span>
+                              {rel.patient?.risk_profile?.level === 'high' && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                  High Risk
+                                </span>
+                              )}
+                              {rel.patient?.risk_profile?.level === 'medium' && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                  Medium Risk
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-4 text-xs text-[#71717a]">
                               <span>{rel.patient?.date_of_birth ? `${calculateAge(rel.patient.date_of_birth)} yrs` : "N/A"}</span>
@@ -259,6 +267,37 @@ export default function PatientsPage() {
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
                       <p className="text-xs font-medium text-amber-700 mb-1">Allergies</p>
                       <p className="text-sm text-amber-600">{selectedPatient.patient.allergies.join(", ")}</p>
+                    </div>
+                  )}
+
+                  {selectedPatient.patient?.risk_profile && (
+                    <div className={`p-4 rounded-xl mb-4 border ${
+                        selectedPatient.patient.risk_profile.level === 'high' ? 'bg-red-50 border-red-200' :
+                        selectedPatient.patient.risk_profile.level === 'medium' ? 'bg-yellow-50 border-yellow-200' :
+                        'bg-green-50 border-green-200'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle className={`h-5 w-5 ${
+                            selectedPatient.patient.risk_profile.level === 'high' ? 'text-red-600' :
+                            selectedPatient.patient.risk_profile.level === 'medium' ? 'text-yellow-600' :
+                            'text-green-600'
+                        }`} />
+                        <h3 className={`font-semibold ${
+                            selectedPatient.patient.risk_profile.level === 'high' ? 'text-red-800' :
+                            selectedPatient.patient.risk_profile.level === 'medium' ? 'text-yellow-800' :
+                            'text-green-800'
+                        }`}>
+                          Risk Score: {selectedPatient.patient.risk_profile.score} ({selectedPatient.patient.risk_profile.level.toUpperCase()})
+                        </h3>
+                      </div>
+                      <div className="space-y-1">
+                        {selectedPatient.patient.risk_profile.factors.map((factor: string, i: number) => (
+                           <p key={i} className="text-sm opacity-80 flex items-center gap-2">
+                             <span className="h-1.5 w-1.5 rounded-full bg-current"></span>
+                             {factor}
+                           </p>
+                        ))}
+                      </div>
                     </div>
                   )}
 

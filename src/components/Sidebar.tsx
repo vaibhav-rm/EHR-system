@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Plus,
   House,
@@ -20,6 +20,7 @@ import {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -30,7 +31,9 @@ export default function Sidebar() {
   const logoAsset = "https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/render/image/public/project-uploads/813fae0f-1657-45b7-a53b-049057aaddf7/image-removebg-preview-33-1768639294584.png?width=8000&height=8000&resize=contain";
 
   const handleSignOut = () => {
-    window.location.href = "/";
+    // Ideally use signOut() from next-auth which handles redirection naturally
+    // but preserving custom flow for now with router
+    router.push("/");
   };
 
   const overviewLinks = [

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const AppointmentSchema = z.object({
     resourceType: z.literal("Appointment"),
-    status: z.enum(["booked", "arrived", "fulfilled", "cancelled", "noshow", "entered-in-error", "checked-in", "waitlist"]),
+    status: z.enum(["booked", "arrived", "fulfilled", "cancelled", "noshow", "entered-in-error", "checked-in", "waitlist", "pending"]),
     start: z.string().datetime(),
     end: z.string().datetime(),
     participant: z.array(z.object({
@@ -12,7 +12,14 @@ export const AppointmentSchema = z.object({
         }),
         status: z.enum(["accepted", "declined", "tentative", "needs-action"])
     })).optional(),
-    description: z.string().optional()
+    description: z.string().optional(),
+    serviceType: z.array(z.object({
+        coding: z.array(z.object({
+            system: z.string().optional(),
+            display: z.string().optional(),
+            code: z.string().optional()
+        })).optional()
+    })).optional()
 });
 
 export const MedicationRequestSchema = z.object({

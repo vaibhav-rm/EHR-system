@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Stethoscope,
   LayoutDashboard,
+  UserRound,
 } from "lucide-react";
 
 interface DoctorSidebarProps {
@@ -41,9 +42,10 @@ export default function DoctorSidebar({ doctorName, specialization }: DoctorSide
 
   const navLinks = [
     { name: "Dashboard", icon: LayoutDashboard, href: "/doctor" },
-    { name: "Add Report", icon: FilePlus, href: "/doctor/add-report" },
+    { name: "My Patients", icon: Users, href: "/doctor/patients" },
     { name: "Appointments", icon: Calendar, href: "/doctor/appointments" },
-    { name: "Patients", icon: Users, href: "/doctor/patients" },
+    { name: "Reports", icon: FilePlus, href: "/doctor/add-report" },
+    { name: "Profile", icon: UserRound, href: "/doctor/profile" },
   ];
 
   const isActive = (href: string) => {

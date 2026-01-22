@@ -31,6 +31,20 @@ export interface Patient {
   insurance_provider?: string;
   insurance_policy_number?: string;
   created_at: string;
+  risk_profile?: {
+    score: number;
+    level: 'low' | 'medium' | 'high';
+    last_assessed: string;
+    factors: string[];
+  };
+  // Extended Fields (Custom Shims)
+  height?: string;
+  weight?: string;
+  current_medications?: string;
+  past_surgeries?: string;
+  family_history?: string;
+  lifestyle?: any;
+  professional?: any;
 }
 
 export interface Appointment {
@@ -41,7 +55,7 @@ export interface Appointment {
   scheduled_date: string;
   scheduled_time: string;
   duration_minutes: number;
-  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled' | 'no_show';
+  status: 'booked' | 'arrived' | 'fulfilled' | 'cancelled' | 'noshow' | 'entered-in-error' | 'checked-in' | 'waitlist' | 'scheduled' | 'completed' | 'in_progress' | 'missed';
   reason?: string;
   notes?: string;
   summary?: string;
@@ -151,3 +165,38 @@ export const REPORT_TYPES = [
 ] as const;
 
 export type ReportType = typeof REPORT_TYPES[number];
+
+export interface Notification {
+  id: string;
+  recipientId: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  status: 'unread' | 'read';
+  timestamp: string;
+  link?: string;
+}
+
+// FHIR Communication Resource Mapping
+export interface Communication {
+  resourceType: 'Communication';
+  id: string;
+  status: 'in-progress' | 'completed' | 'on-hold' | 'entere-in-error' | 'stopped';
+  category?: Array<{
+    coding: Array<{
+      system: string;
+      code: string;
+      display: string;
+    }>
+  }>;
+  priority?: 'routine' | 'urgent' | 'asap' | 'stat';
+  subject?: { reference: string }; // Patient
+  recipient?: Array<{ reference: string }>; // User (Patient or Practitioner)
+  sent: string;
+  payload?: Array<{
+    contentString?: string;
+    contentAttachment?: {
+      url: string;
+      title: string;
+    }
+  }>;
+}

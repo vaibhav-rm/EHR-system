@@ -144,9 +144,14 @@ const initialProfileData: ProfileData = {
 
 import { useQuery } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
+import { toast } from 'sonner';
+import { createNotification } from '@/app/actions/notifications';
+
+import { useRouter } from 'next/navigation';
 
 export default function ProfilePage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [userRole, setUserRole] = useState<UserRole>("patient");
   const [profileData, setProfileData] = useState<ProfileData>(initialProfileData);
@@ -161,14 +166,14 @@ export default function ProfilePage() {
 
   // Fetch Profile
   const { data: patientBundle, isLoading } = useQuery({
-    queryKey: ['patient-profile', session?.user?.email],
+    queryKey: ['patient-profile', session?.user?.id],
     queryFn: async () => {
-      if (!session?.user?.email) return null;
-      const res = await fetch(`/api/fhir/Patient?email=${encodeURIComponent(session.user.email)}`);
+      if (!session?.user?.id) return null;
+      const res = await fetch(`/api/fhir/Patient?id=${session.user.id}`);
       if (!res.ok) throw new Error("Failed to fetch profile");
       return res.json();
     },
-    enabled: !!session?.user?.email
+    enabled: !!session?.user?.id
   });
   
   const patientResource = patientBundle?.entry?.[0]?.resource;
@@ -189,8 +194,39 @@ export default function ProfilePage() {
                 city: patientResource.address?.[0]?.city || "",
                 state: patientResource.address?.[0]?.state || "",
                 pincode: patientResource.address?.[0]?.postalCode || "",
+                // avatar field is legacy, we use photo.url
             },
-            // Other sections would require custom extensions or specific mapping logic not standard in basic Patient resource
+            photo: {
+                url: patientResource.photo?.[0]?.url || ""
+            },
+            medical: {
+                ...prev.medical,
+                bloodGroup: patientResource.blood_type || "",
+                height: patientResource.height || "",
+                weight: patientResource.weight || "",
+                allergies: Array.isArray(patientResource.allergies) ? patientResource.allergies.join(", ") : patientResource.allergies || "",
+                chronicConditions: Array.isArray(patientResource.chronic_conditions) ? patientResource.chronic_conditions.join(", ") : patientResource.chronic_conditions || "",
+                currentMedications: patientResource.current_medications || "",
+                pastSurgeries: patientResource.past_surgeries || "",
+                familyHistory: patientResource.family_history || "",
+            },
+            lifestyle: {
+                ...prev.lifestyle,
+                smokingStatus: patientResource.lifestyle?.smokingStatus || "",
+                alcoholConsumption: patientResource.lifestyle?.alcoholConsumption || "",
+                exerciseFrequency: patientResource.lifestyle?.exerciseFrequency || "",
+                dietType: patientResource.lifestyle?.dietType || "",
+                sleepHours: patientResource.lifestyle?.sleepHours || "",
+                stressLevel: patientResource.lifestyle?.stressLevel || "",
+                occupation: patientResource.lifestyle?.occupation || "",
+                workEnvironment: patientResource.lifestyle?.workEnvironment || "",
+            },
+            professional: {
+                ...prev.professional,
+                // Only if doctor fields are stored similarly, but for now focus on Patient Risk data
+                licenseNumber: patientResource.professional?.licenseNumber || "",
+                // ... map others if needed
+            }
         }));
     }
   }, [patientResource]);
@@ -234,15 +270,16 @@ export default function ProfilePage() {
 
 
   const handleSave = async () => {
-    if (!patientResource?.id) {
-        alert("No patient profile found to update.");
-        return;
-    }
+    // Determine if we are creating a new profile or updating an existing one
+    const isNewProfile = !patientResource?.id;
+    const defaultAvatar = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop";
+
+    // Fix: UI updates profileData.photo.url, not personal.avatar
+    const photoUrl = profileData.photo.url || patientResource?.photo?.[0]?.url || defaultAvatar;
 
     const updatedPatient = {
-        ...patientResource,
         resourceType: "Patient",
-        id: patientResource.id,
+        id: patientResource?.id, // Sent for update, ignored/overridden for create
         name: [{
             use: "official",
             family: profileData.personal.lastName,
@@ -254,32 +291,54 @@ export default function ProfilePage() {
         ],
         gender: profileData.personal.gender,
         birthDate: profileData.personal.dateOfBirth,
-        photo: profileData.personal.avatar ? [{ url: profileData.personal.avatar }] : patientResource.photo,
+        photo: [{ url: photoUrl }],
         address: [{
             text: profileData.personal.address,
             city: profileData.personal.city,
             state: profileData.personal.state,
             postalCode: profileData.personal.pincode,
             country: "India" // Default
-        }]
+        }],
+        // Extended Fields (Custom)
+        blood_type: profileData.medical.bloodGroup,
+        height: profileData.medical.height,
+        weight: profileData.medical.weight,
+        allergies: profileData.medical.allergies ? profileData.medical.allergies.split(',').map(s => s.trim()).filter(Boolean) : [],
+        chronic_conditions: profileData.medical.chronicConditions ? profileData.medical.chronicConditions.split(',').map(s => s.trim()).filter(Boolean) : [],
+        current_medications: profileData.medical.currentMedications,
+        past_surgeries: profileData.medical.pastSurgeries,
+        family_history: profileData.medical.familyHistory,
+        lifestyle: profileData.lifestyle,
+        // Professional (if needed for Doctor profile stored in Patient resource? unlikely but consistent)
+        professional: profileData.professional
     };
 
     try {
+        const method = isNewProfile ? 'POST' : 'PUT';
         const res = await fetch('/api/fhir/Patient', {
-            method: 'PUT',
+            method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updatedPatient)
         });
 
         if (res.ok) {
-            alert("Profile saved successfully!");
-            window.location.href = "/dashboard";
+            // Log persistent notification
+            await createNotification(
+                patientResource?.id || "",
+                "Your profile has been successfully updated.",
+                "success",
+                "/profile"
+            );
+            
+            toast.success("Profile saved successfully!", { duration: 3000 });
+            router.push("/dashboard");
         } else {
-            alert("Failed to save profile.");
+            console.error("Save failed", await res.text());
+            toast.error("Failed to save profile.");
         }
     } catch (e) {
         console.error(e);
-        alert("An error occurred while saving.");
+        toast.error("An error occurred while saving.");
     }
   };
 

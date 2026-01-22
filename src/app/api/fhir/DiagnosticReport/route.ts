@@ -24,12 +24,23 @@ export async function POST(request: Request) {
     }
 }
 
+import { auth } from '@/auth';
+
 export async function GET(request: Request) {
     try {
+        const session = await auth();
+        if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+
         const { searchParams } = new URL(request.url);
         const patient = searchParams.get('patient') || searchParams.get('subject');
 
         const reports = await fhirStore.search<DiagnosticReport>('DiagnosticReport', (r) => {
+            // Security: User must be Subject or Performer
+            const isSubject = r.subject?.reference?.includes(session.user.id!);
+            const isPerformer = r.performer?.some(p => p.reference?.includes(session.user.id!));
+
+            if (!isSubject && !isPerformer) return false;
+
             if (patient) {
                 const ref = r.subject?.reference;
                 if (!ref?.includes(patient)) return false;

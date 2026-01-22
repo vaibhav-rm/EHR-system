@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, ReactNode, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useSession } from "next-auth/react";
 
@@ -84,8 +84,84 @@ export function AppointmentsProvider({ children }: { children: ReactNode }) {
   const appointments = allAppointments.filter(a => ['booked', 'arrived', 'checked-in', 'waitlist', 'pending', 'confirmed'].includes(a.status));
   const pastAppointments = allAppointments.filter(a => ['fulfilled', 'completed', 'cancelled', 'noshow', 'entered-in-error'].includes(a.status));
 
-  const addAppointment = (appointment: any) => {
-      console.log("Add appointment via API pending", appointment);
+  const queryClient = useQueryClient();
+
+  const addAppointment = async (appointmentData: any) => {
+      try {
+          // Construct FHIR Appointment Resource
+          // Combine date and time to ISO string
+          // Time is like "10:00 AM" or "2:30 PM"
+          // Date is "YYYY-MM-DD"
+          
+          let startDate = new Date();
+          if (appointmentData.date && appointmentData.time) {
+              const [timeStr, period] = appointmentData.time.split(' ');
+              const [hoursStr, minutesStr] = timeStr.split(':');
+              let hours = parseInt(hoursStr);
+              if (period === 'PM' && hours !== 12) hours += 12;
+              if (period === 'AM' && hours === 12) hours = 0;
+              
+              startDate = new Date(appointmentData.date);
+              startDate.setHours(hours, parseInt(minutesStr), 0);
+          }
+
+          const fhirAppointment = {
+              resourceType: "Appointment",
+              status: "booked",
+              description: appointmentData.type,
+              start: startDate.toISOString(),
+              end: new Date(startDate.getTime() + 30 * 60000).toISOString(), // Assume 30 min duration
+              participant: [
+                  {
+                      actor: {
+                          reference: `Patient/${session?.user?.id}`,
+                          display: session?.user?.name || "Patient"
+                      },
+                      status: "accepted"
+                  },
+                  {
+                      actor: {
+                          reference: `Practitioner/${appointmentData.doctorId || 'unknown'}`, 
+                          display: appointmentData.doctor
+                      },
+                      status: "accepted"
+                  }
+              ],
+              serviceType: [
+                  {
+                      coding: [
+                          {
+                              system: "http://snomed.info/sct",
+                              display: appointmentData.specialty
+                          }
+                      ]
+                  }
+              ]
+          };
+
+          const res = await fetch('/api/fhir/Appointment', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(fhirAppointment)
+          });
+
+          if (!res.ok) {
+              const err = await res.json();
+              console.error("Failed to book appointment", err);
+              throw new Error(err.error || "Failed to book appointment");
+          }
+
+          // Invalidate queries to refresh the list
+          queryClient.invalidateQueries({ queryKey: ['appointments'] });
+          
+          return await res.json();
+
+      } catch (error) {
+          console.error("Error adding appointment:", error);
+          throw error;
+      }
   };
 
   return (

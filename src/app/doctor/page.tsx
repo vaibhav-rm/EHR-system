@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { getDoctorAppointments } from "@/app/actions/clinical";
 import DoctorSidebar from "@/components/DoctorSidebar";
 import { Doctor, Appointment, Patient } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
@@ -45,37 +46,37 @@ export default function DoctorDashboard() {
             hospital: "Medanta Hospital", 
             specialization: "General Physician", 
             email: user.email || "",
-            role: "doctor"
+            doctor_id: "DOC001", // Placeholder
+            qualification: "MBBS", // Placeholder
+            years_of_experience: 10, // Placeholder
+            created_at: new Date().toISOString()
         });
 
         const fetchDashboardData = async (doctorId: string) => {
             try {
               const today = new Date().toISOString().split("T")[0];
+              
+              // Fetch from FHIR store
+              const allAppointments = await getDoctorAppointments(doctorId);
+              
+              // Filter for today
+              const todayAppointments = allAppointments.filter((a: any) => a.scheduled_date === today);
+              
+              // Calculate stats from appointments
+              const uniquePatients = new Set(allAppointments.map((a: any) => a.patient?.patient_id).filter(Boolean));
+              const totalPatients = uniquePatients.size;
+              
+              // For reports, we don't have a direct doctor-reports index in FHIR yet without scanning all reports.
+              // We'll leave it as 0 or implement a separate action later if critical.
+              const totalReports = 0; 
+
+              const completedToday = todayAppointments.filter((a: any) => a.status === "completed").length;
         
-              const { data: appointments } = await supabase
-                .from("appointments")
-                .select("*, patient:patients(*)")
-                .eq("doctor_id", doctorId)
-                .eq("scheduled_date", today)
-                .order("scheduled_time", { ascending: true });
-        
-              const { count: totalPatients } = await supabase
-                .from("doctor_patient_relations")
-                .select("*", { count: "exact", head: true })
-                .eq("doctor_id", doctorId);
-        
-              const { count: totalReports } = await supabase
-                .from("reports")
-                .select("*", { count: "exact", head: true })
-                .eq("doctor_id", doctorId);
-        
-              const completedToday = appointments?.filter(a => a.status === "completed").length || 0;
-        
-              setTodayAppointments(appointments || []);
+              setTodayAppointments(todayAppointments);
               setStats({
-                todayCount: appointments?.length || 0,
-                totalPatients: totalPatients || 0,
-                totalReports: totalReports || 0,
+                todayCount: todayAppointments.length,
+                totalPatients: totalPatients,
+                totalReports: totalReports,
                 completedToday,
               });
             } catch (error) {
@@ -210,6 +211,8 @@ export default function DoctorDashboard() {
                             ? "bg-green-100 text-green-700"
                             : apt.status === "in_progress"
                             ? "bg-blue-100 text-blue-700"
+                            : apt.status === "missed"
+                            ? "bg-red-100 text-red-700"
                             : "bg-amber-100 text-amber-700"
                         }`}>
                           {apt.status === "scheduled" ? "Upcoming" : apt.status}

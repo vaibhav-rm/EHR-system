@@ -6,11 +6,12 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 
+import { toast } from 'sonner';
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -18,9 +19,9 @@ export default function LoginPage() {
     const errorParam = searchParams.get('error');
     if (errorParam) {
       if (errorParam === 'CredentialsSignin') {
-          setError('Invalid credentials.');
+          toast.error('Invalid credentials.');
       } else {
-          setError(errorParam); 
+          toast.error(errorParam); 
       }
     }
   }, []);
@@ -28,7 +29,6 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
 
     try {
       const result = await signIn('credentials', {
@@ -39,16 +39,17 @@ export default function LoginPage() {
 
       if (result?.error) {
          if (result.error === 'CredentialsSignin') {
-            setError('Invalid email or password.');
+            toast.error('Invalid email or password.');
          } else {
-            setError(result.error);
+            toast.error(result.error);
          }
       } else {
+        toast.success("Welcome back!", { duration: 3000 });
         router.push('/dashboard');
       }
     } catch (err) {
       console.error(err);
-      setError('An unexpected error occurred. Please try again.');
+      toast.error('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -63,11 +64,6 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {error && (
-            <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
-              {error}
-            </div>
-          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
